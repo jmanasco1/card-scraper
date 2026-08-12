@@ -51,6 +51,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sport", default=None)
     parser.add_argument("--reset", action="store_true", help="ignore checkpoint, start over")
+    parser.add_argument("--max-sets", type=int, default=None, help="override scan_limits.max_sets_per_run")
+    parser.add_argument("--max-cards", type=int, default=None, help="override scan_limits.max_card_pages_per_run")
+    parser.add_argument("--debug", action="store_true", help="log captured network responses for each page")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -61,10 +64,14 @@ def main():
 
     filters = cfg["filters"]
     limits = cfg["scan_limits"]
+    if args.max_sets is not None:
+        limits["max_sets_per_run"] = args.max_sets
+    if args.max_cards is not None:
+        limits["max_card_pages_per_run"] = args.max_cards
     checkpoint = {"done_sets": []} if args.reset else load_checkpoint(sport)
 
     print(f"=== GemRate scan: {sport} ({cfg['grader'].upper()}) ===")
-    client = GemRateClient(delay_seconds=limits["request_delay_seconds"])
+    client = GemRateClient(delay_seconds=limits["request_delay_seconds"], debug=args.debug)
 
     try:
         # ---- Stage 0: sets ------------------------------------------------

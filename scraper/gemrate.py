@@ -40,8 +40,9 @@ class CardRow:
 
 
 class GemRateClient:
-    def __init__(self, delay_seconds=1.5, headless=True):
+    def __init__(self, delay_seconds=1.5, headless=True, debug=False):
         self.delay = delay_seconds
+        self.debug = debug
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=headless)
         self._ctx = self._browser.new_context(
@@ -74,8 +75,16 @@ class GemRateClient:
 
     def _goto(self, url):
         self._captured_json = []
-        self.page.goto(url, wait_until="networkidle", timeout=60000)
+        resp = self.page.goto(url, wait_until="networkidle", timeout=60000)
         time.sleep(self.delay)
+        if self.debug:
+            status = resp.status if resp else "?"
+            print(f"  [debug] GET {url} -> {status} | title: {self.page.title()!r}")
+            if not self._captured_json:
+                print("  [debug] no JSON responses captured")
+            for blob in self._captured_json:
+                body = json.dumps(blob["body"])
+                print(f"  [debug] json {blob['url']} ({len(body)} bytes): {body[:400]}")
 
     # ------------------------------------------------------------------ #
     #  Stage 0: enumerate sets for a category

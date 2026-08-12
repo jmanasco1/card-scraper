@@ -20,6 +20,21 @@ on:
         required: false
         type: boolean
         default: false
+      max_sets:
+        description: "Override max sets per run (blank = config.json value)"
+        required: false
+        type: string
+        default: ""
+      max_cards:
+        description: "Override max card pages per run (blank = config.json value)"
+        required: false
+        type: string
+        default: ""
+      debug:
+        description: "Run site recon first and log captured network responses"
+        required: false
+        type: boolean
+        default: false
   schedule:
     # Weekly, Monday 13:00 UTC (uses default_sport from config.json)
     - cron: "0 13 * * 1"
@@ -43,15 +58,22 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
+      - name: Site recon (debug only)
+        if: ${{ github.event.inputs.debug == 'true' }}
+        run: python -m scraper.recon
+
       - name: Run scan
         run: |
           SPORT="${{ github.event.inputs.sport }}"
-          RESET=""
-          if [ "${{ github.event.inputs.reset }}" = "true" ]; then RESET="--reset"; fi
+          ARGS=""
+          if [ "${{ github.event.inputs.reset }}" = "true" ]; then ARGS="$ARGS --reset"; fi
+          if [ "${{ github.event.inputs.debug }}" = "true" ]; then ARGS="$ARGS --debug"; fi
+          if [ -n "${{ github.event.inputs.max_sets }}" ]; then ARGS="$ARGS --max-sets ${{ github.event.inputs.max_sets }}"; fi
+          if [ -n "${{ github.event.inputs.max_cards }}" ]; then ARGS="$ARGS --max-cards ${{ github.event.inputs.max_cards }}"; fi
           if [ -n "$SPORT" ]; then
-            python -m scraper.scan --sport "$SPORT" $RESET
+            python -m scraper.scan --sport "$SPORT" $ARGS
           else
-            python -m scraper.scan
+            python -m scraper.scan $ARGS
           fi
 
       - name: Commit results
