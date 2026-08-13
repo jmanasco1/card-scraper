@@ -63,6 +63,10 @@ jobs:
           playwright install --with-deps chrome
           playwright install --with-deps chromium
 
+      - name: Cloudflare transport probe (debug only)
+        if: ${{ github.event.inputs.debug == 'true' }}
+        run: python -m scraper.probe
+
       - name: Site recon (debug only)
         if: ${{ github.event.inputs.debug == 'true' }}
         run: xvfb-run -a python -m scraper.recon
