@@ -49,6 +49,11 @@ jobs:
     env:
       # Headful Chrome under xvfb — headless mode trips Cloudflare's bot check
       GEMRATE_HEADFUL: "1"
+      # gemrate.com is behind Cloudflare, which blocks GitHub's datacenter IPs
+      # outright. Set a residential/mobile proxy URL (or scraping-API endpoint)
+      # in the repo secret GEMRATE_PROXY to let the scan reach the site.
+      # Format: http://user:pass@host:port  (empty = direct, will be blocked)
+      GEMRATE_PROXY: ${{ secrets.GEMRATE_PROXY }}
     steps:
       - uses: actions/checkout@v4
 

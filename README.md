@@ -37,13 +37,35 @@ GemRate is a JavaScript app and doesn't document its internal endpoints. The scr
 - **JSON interception** (preferred): captures the structured API responses the site loads and parses them with tolerant key-matching.
 - **DOM fallback**: parses rendered tables if no usable JSON appears.
 
-Expect the first run to need a selector or key-name adjustment once you see real responses — that's normal for any scraper against an undocumented site. Run locally first with `headless=False` in `gemrate.py` to watch it work:
+Run locally to watch it work (a residential IP passes Cloudflare automatically):
 
 ```bash
 pip install -r requirements.txt
-playwright install chromium
-python -m scraper.scan --sport basketball
+playwright install chrome chromium
+python -m scraper.scan --sport basketball --max-sets 2 --debug
 ```
+
+## ⚠️ Cloudflare + GitHub Actions: a proxy is required
+
+gemrate.com sits behind **Cloudflare**, which serves a managed "Just a moment…" challenge. On a normal home/residential connection a real browser clears it automatically. **GitHub-hosted runners use Azure datacenter IPs, which Cloudflare blocks outright** — the challenge never clears no matter the browser or fingerprint.
+
+This was verified end-to-end: real Google Chrome (headful under xvfb, with anti-fingerprint patches) and `curl_cffi` TLS-impersonation across five browser profiles all returned `403 Just a moment...` from the runner. The block is IP-reputation based, not a fingerprint problem, so no client-side trick fixes it.
+
+**To run the scan on GitHub Actions you must route it through a residential/mobile egress:**
+
+1. Get a residential or mobile proxy (Bright Data, Oxylabs, IPRoyal, …) or a scraping API that bundles residential IPs + Cloudflare solving (ScraperAPI, ZenRows, Scrapfly).
+2. Add the endpoint as a repo secret named **`GEMRATE_PROXY`** (Settings → Secrets and variables → Actions), format `http://user:pass@host:port`.
+3. Re-run the workflow. The scraper (`launch_browser`) and the probe both honor `GEMRATE_PROXY` automatically.
+
+Alternatives that avoid a proxy entirely:
+- Run the scan on a **self-hosted runner** on a residential connection, or
+- Run `python -m scraper.scan` on your **own machine** and commit `results/` yourself.
+
+### Debug tooling
+
+Run the workflow with **debug = true** (or pass `--debug` locally) to get:
+- `scraper/probe.py` — tests whether the current egress can reach the site via `curl_cffi` TLS impersonation (prints status per browser profile).
+- `scraper/recon.py` — loads pages in the real browser and dumps titles, links, and every captured JSON/XHR endpoint, so the parsers can be kept in sync once traffic actually gets through.
 
 ## Notes
 

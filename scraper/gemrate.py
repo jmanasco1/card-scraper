@@ -20,7 +20,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from playwright.sync_api import sync_playwright
 
@@ -63,15 +63,38 @@ def default_headless():
     return os.environ.get("GEMRATE_HEADFUL", "") != "1"
 
 
+def proxy_config():
+    """Parse GEMRATE_PROXY (e.g. http://user:pass@host:port) into Playwright's
+    proxy dict, or None if unset. Cloudflare blocks datacenter IPs outright, so
+    a residential/mobile proxy is required to scrape from CI."""
+    raw = os.environ.get("GEMRATE_PROXY", "").strip()
+    if not raw:
+        return None
+    p = urlparse(raw)
+    server = f"{p.scheme}://{p.hostname}"
+    if p.port:
+        server += f":{p.port}"
+    cfg = {"server": server}
+    if p.username:
+        cfg["username"] = p.username
+    if p.password:
+        cfg["password"] = p.password
+    return cfg
+
+
 def launch_browser(pw, headless):
     """Prefer real Google Chrome (best Cloudflare pass rate); fall back to
-    the msedge channel, then bundled Chromium."""
+    the msedge channel, then bundled Chromium. Honors GEMRATE_PROXY."""
+    proxy = proxy_config()
+    kwargs = {"headless": headless, "args": LAUNCH_ARGS}
+    if proxy:
+        kwargs["proxy"] = proxy
     for channel in ("chrome", "msedge"):
         try:
-            return pw.chromium.launch(channel=channel, headless=headless, args=LAUNCH_ARGS)
+            return pw.chromium.launch(channel=channel, **kwargs)
         except Exception:
             continue
-    return pw.chromium.launch(headless=headless, args=LAUNCH_ARGS)
+    return pw.chromium.launch(**kwargs)
 
 
 def new_stealth_context(browser):

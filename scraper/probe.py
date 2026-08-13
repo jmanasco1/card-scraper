@@ -26,18 +26,24 @@ IMPERSONATE = ["chrome124", "chrome120", "chrome110", "safari17_0", "edge101"]
 
 
 def main():
+    import os
+
     try:
         from curl_cffi import requests as cffi
     except Exception as e:
         print(f"curl_cffi not available: {e}")
         return
 
+    proxy = os.environ.get("GEMRATE_PROXY", "").strip()
+    proxies = {"http": proxy, "https": proxy} if proxy else None
+    print(f"proxy: {'set' if proxy else 'none (datacenter IP)'}")
+
     for imp in IMPERSONATE:
         print(f"\n=== impersonate={imp} ===")
         for path in PATHS:
             url = BASE + path
             try:
-                r = cffi.get(url, impersonate=imp, timeout=30)
+                r = cffi.get(url, impersonate=imp, timeout=30, proxies=proxies)
             except Exception as e:
                 print(f"  {path} -> ERROR {e}")
                 continue

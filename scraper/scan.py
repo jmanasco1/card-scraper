@@ -78,8 +78,11 @@ def main():
         sets = client.list_sets(cfg["grader"], category)
         if not sets:
             sys.exit(
-                "No sets found — bot protection blocked the page or the site "
-                "structure changed. Re-run with debug=true and check the recon output."
+                "No sets found — Cloudflare blocked every request (403 "
+                "'Just a moment...'). GitHub's datacenter IPs are blocked "
+                "outright; set the GEMRATE_PROXY repo secret to a residential/"
+                "mobile proxy or scraping-API endpoint. Re-run with debug=true "
+                "to see the transport probe and recon output."
             )
         print(f"Found {len(sets)} sets total; {len(checkpoint['done_sets'])} already scanned.")
         todo = [s for s in sets if s["url"] not in checkpoint["done_sets"]]
