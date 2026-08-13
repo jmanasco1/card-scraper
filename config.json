@@ -17,8 +17,7 @@
   },
 
   "scan_limits": {
-    "max_sets_per_run": 40,
-    "max_card_pages_per_run": 250,
+    "max_comp_lookups": 40,
     "request_delay_seconds": 1.5,
     "max_results": 50
   },
