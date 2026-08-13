@@ -1,32 +1,48 @@
 # GemRate Scanner
 
-Finds cards with **high population + low gem rate + upward price momentum** — the ones the market is actively repricing but hasn't finished repricing.
+Finds cards with **high population + low gem rate** — heavily graded cards that are hard to pull in a gem grade.
+
+> **Note:** GemRate rebuilt their site and no longer publishes recent sale prices (those moved to their CardLadder integration). The original "price momentum" signal isn't available from GemRate anymore, so this tool ranks on population + gem-rate scarcity. Treat the output as a shortlist to verify manually (eBay / CardLadder solds), not a buy list.
 
 ## How it works
 
-Two-stage funnel to keep request volume polite:
+Single stage, using GemRate's **Top Cards** report:
 
-1. **Stage 1 (cheap):** Scrapes set checklist pages for every card's population and gem rate. Filters immediately.
-2. **Stage 2 (targeted):** Only cards passing the pop/gem filters get their card page scraped for recent sale comps.
-3. **Rank:** Momentum (50%) + gem-rate tightness scaled by population (30%) + sales activity (20%). Weights are in `config.json`.
+1. Load `/top-cards?grader=psa&category=<sport>` in a real browser (required — the site is behind Cloudflare).
+2. Pull the dataset embedded in the page (`var RowData = JSON.parse(...)`) — the top ~100 most-graded cards for that sport, each with population and gem count.
+3. **Filter:** keep cards with population ≥ min and gem rate ≤ max.
+4. **Rank:** gem-rate tightness (scaled by log-population) + grading volume. Weights are in `config.json`.
 
-Runs are **checkpointed** — each scheduled run picks up where the last one stopped, so the full database gets covered over successive runs without any single run taking hours.
+Results land in `results/` as CSV, JSON, and a markdown summary table.
 
 ## Setup
 
-1. Push this repo to GitHub.
-2. Go to **Actions → GemRate Scan → Run workflow** — pick your sport from the dropdown.
-3. Results land in `results/` as CSV, JSON, and a markdown summary table, committed back to the repo.
+1. Go to **Actions → GemRate Scan → Run workflow** — pick your sport from the dropdown.
+2. **Important:** GitHub's servers are blocked by GemRate's Cloudflare protection (see below), so the Actions run needs a `GEMRATE_PROXY` secret. To run without a proxy, run it locally instead (see "Running locally").
+3. Results are committed back to the repo under `results/`.
 
 The weekly scheduled run (Monday) uses `default_sport` in `config.json`.
+
+## Running locally
+
+A normal home internet connection clears Cloudflare on its own, so local runs need no proxy:
+
+```bash
+pip install -r requirements.txt
+playwright install chrome
+# Windows: set GEMRATE_HEADFUL=1     (macOS/Linux: export GEMRATE_HEADFUL=1)
+python -m scraper.scan --sport basketball --debug
+```
+
+Then look in `results/` for `latest_basketball.csv` and `summary_basketball.md`.
 
 ## Tuning
 
 Everything lives in `config.json`:
 
-- `filters` — min pop (300), max gem rate (20%), min price ($20), min recent sales (3 in 60 days)
-- `ranking_weights` — momentum / tightness / activity
-- `scan_limits` — sets per run, card pages per run, delay between requests, max results
+- `filters` — `min_total_population` (300) and `max_gem_rate_pct` (20). (`min_price_usd` / recent-sales filters are legacy and unused now that sale prices aren't available.)
+- `ranking_weights` — `gem_rate_tightness` and `sales_activity` (used as a volume weight); `price_momentum` is folded into tightness for backward compatibility.
+- `scan_limits` — `request_delay_seconds`, `max_results` (per-set / per-card limits are legacy no-ops).
 
 Too many results? Tighten filters. Too few? Loosen them.
 

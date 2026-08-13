@@ -1,17 +1,24 @@
 """
 GemRate site access layer.
 
-Strategy:
-  1. Load pages with Playwright (site is JavaScript-rendered).
-  2. Intercept JSON/XHR responses first — Next.js apps ship structured data,
-     which is far more reliable than DOM parsing.
-  3. Fall back to parsing rendered tables if no usable JSON is captured.
+GemRate rebuilt their site: the old per-set checklist + sale-comp pages are
+gone. The current data lives on the "Top Cards" report
+(/top-cards?grader=...&category=...), which embeds the full dataset in the page
+as a JavaScript variable:
 
-Two-stage funnel:
-  Stage 1 (cheap):  set checklist pages -> every card's pop + gem rate.
-  Stage 2 (costly): individual card pages -> recent sale comps.
-  Stage 2 only runs for cards that survive the Stage 1 filters, which keeps
-  request volume low enough to be a polite scraper.
+    var RowData = JSON.parse('[{"card_number": "26", "category": "Basketball",
+        "gems": 8711, "grader": "psa", "name": "Michael Jordan",
+        "parallel": "Base", "set_name": "Fleer", "total": 70968,
+        "year": "1990", "trend_links": {...}}, ...]')
+
+So the strategy is now single-stage:
+  1. Load the Top Cards page for the sport/category with Playwright (a real
+     browser is required — Cloudflare blocks non-browser and datacenter IPs).
+  2. Pull the RowData JSON straight out of the HTML — far more reliable than
+     scraping the rendered ag-Grid table.
+
+Note: GemRate no longer publishes recent sale prices (those moved to their
+CardLadder integration), so this layer returns population + gem-rate data only.
 """
 
 import json
@@ -19,8 +26,6 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
-from urllib.parse import urljoin, urlparse
 
 from playwright.sync_api import sync_playwright
 
@@ -28,10 +33,11 @@ BASE = "https://www.gemrate.com"
 
 # Cloudflare sits in front of gemrate.com and serves a JS challenge
 # ("Just a moment...") to anything that looks automated. Headless mode is the
-# strongest bot signal, so CI runs headful under xvfb (GEMRATE_HEADFUL=1),
-# prefer real Google Chrome over Playwright's bundled Chromium, keep the
-# browser's own user agent, and wait for the challenge to clear — the
-# cf_clearance cookie then covers the rest of the session.
+# strongest bot signal, so CI runs headful under xvfb (GEMRATE_HEADFUL=1) and
+# we prefer real Google Chrome over Playwright's bundled Chromium. NOTE:
+# Cloudflare blocks datacenter IPs (e.g. GitHub-hosted runners) outright; set
+# GEMRATE_PROXY to a residential/mobile proxy to scrape from CI. A normal home
+# connection clears the challenge on its own.
 LAUNCH_ARGS = [
     "--disable-blink-features=AutomationControlled",
     "--no-sandbox",
@@ -65,8 +71,9 @@ def default_headless():
 
 def proxy_config():
     """Parse GEMRATE_PROXY (e.g. http://user:pass@host:port) into Playwright's
-    proxy dict, or None if unset. Cloudflare blocks datacenter IPs outright, so
-    a residential/mobile proxy is required to scrape from CI."""
+    proxy dict, or None if unset. Required to scrape from a datacenter IP."""
+    from urllib.parse import urlparse
+
     raw = os.environ.get("GEMRATE_PROXY", "").strip()
     if not raw:
         return None
@@ -131,8 +138,71 @@ class CardRow:
     total_pop: int
     gem_pop: int
     gem_rate_pct: float
-    grade_breakdown: dict = field(default_factory=dict)
-    comps: list = field(default_factory=list)  # [{"date": iso, "price": float, "grade": str}]
+    year: str = ""
+    parallel: str = ""
+
+
+# ---------------------------------------------------------------------- #
+#  RowData extraction — the dataset embedded in the Top Cards page
+# ---------------------------------------------------------------------- #
+_ROWDATA_RE = re.compile(r"var\s+RowData\s*=\s*JSON\.parse\(\s*'")
+
+
+def extract_rowdata(html):
+    """Pull the `var RowData = JSON.parse('...')` array out of page HTML.
+    Returns a list of dicts, or [] if the marker isn't present."""
+    m = _ROWDATA_RE.search(html)
+    if not m:
+        return []
+    i = m.end()
+    out = []
+    while i < len(html):
+        c = html[i]
+        if c == "\\":
+            out.append(html[i : i + 2])
+            i += 2
+            continue
+        if c == "'":
+            break
+        out.append(c)
+        i += 1
+    raw = "".join(out)
+    # The captured text is a JS single-quoted string literal (\uXXXX, \', \\,
+    # ...). Decoding the escapes yields the JSON document itself.
+    try:
+        js = raw.encode("utf-8").decode("unicode_escape")
+        return json.loads(js)
+    except Exception:
+        # Fallback: handle only the escapes JSON itself understands.
+        try:
+            return json.loads(raw.replace("\\'", "'"))
+        except Exception:
+            return []
+
+
+def card_from_row(item):
+    """Build a CardRow from one RowData entry, computing gem rate."""
+    total = _to_int(item.get("total"))
+    gems = _to_int(item.get("gems"))
+    name = item.get("name")
+    if not name or not total:
+        return None
+    gem_rate = round(100.0 * gems / total, 2) if gems is not None else 0.0
+    links = item.get("trend_links") or {}
+    grader = str(item.get("grader") or "psa").lower()
+    link = links.get(grader) or links.get("psa") or ""
+    url = f"{BASE}{link}" if link.startswith("/") else (link or BASE)
+    return CardRow(
+        set_name=str(item.get("set_name") or ""),
+        card_name=str(name),
+        card_number=str(item.get("card_number") or ""),
+        url=url,
+        total_pop=total,
+        gem_pop=gems or 0,
+        gem_rate_pct=gem_rate,
+        year=str(item.get("year") or ""),
+        parallel=str(item.get("parallel") or ""),
+    )
 
 
 class GemRateClient:
@@ -145,29 +215,13 @@ class GemRateClient:
         self._browser = launch_browser(self._pw, headless)
         self._ctx = new_stealth_context(self._browser)
         self.page = self._ctx.new_page()
-        self._captured_json = []
-        self.page.on("response", self._capture_json)
 
     def close(self):
         self._ctx.close()
         self._browser.close()
         self._pw.stop()
 
-    # ------------------------------------------------------------------ #
-    #  network capture
-    # ------------------------------------------------------------------ #
-    def _capture_json(self, response):
-        try:
-            ctype = response.headers.get("content-type", "")
-            if "json" in ctype and response.status == 200:
-                self._captured_json.append(
-                    {"url": response.url, "body": response.json()}
-                )
-        except Exception:
-            pass
-
     def _goto(self, url):
-        self._captured_json = []
         resp = self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
         cleared = wait_for_challenge(self.page)
         try:
@@ -179,248 +233,28 @@ class GemRateClient:
             status = resp.status if resp else "?"
             note = "" if cleared else " | CHALLENGE NOT CLEARED"
             print(f"  [debug] GET {url} -> {status} | title: {self.page.title()!r}{note}")
-            if not self._captured_json:
-                print("  [debug] no JSON responses captured")
-            for blob in self._captured_json:
-                body = json.dumps(blob["body"])
-                print(f"  [debug] json {blob['url']} ({len(body)} bytes): {body[:400]}")
+        return cleared
 
-    # ------------------------------------------------------------------ #
-    #  Stage 0: enumerate sets for a category
-    # ------------------------------------------------------------------ #
-    def list_sets(self, grader, category):
-        """Return [{'name':..., 'url':...}] for a sport category."""
-        url = f"{BASE}/sets?grader={grader}&category={category}"
+    def fetch_top_cards(self, category, grader="psa"):
+        """Load the Top Cards report for a category and return [CardRow].
+
+        `category` is a GemRate slug like 'basketball-cards'. Returns every
+        card in the report (typically the top ~100 most-graded, all-time).
+        """
+        url = f"{BASE}/top-cards?grader={grader}&category={category}"
         self._goto(url)
-
-        sets = []
-        # Prefer intercepted JSON
-        for blob in self._captured_json:
-            found = _walk_for_sets(blob["body"])
-            if found:
-                for s in found:
-                    link = s.get("url") or s.get("slug") or s.get("href")
-                    name = s.get("name") or s.get("set_name") or s.get("title")
-                    if link and name:
-                        sets.append({"name": name, "url": urljoin(BASE, str(link))})
-        if sets:
-            return _dedupe(sets)
-
-        # DOM fallback: any link that looks like a set/pop-report page
-        anchors = self.page.eval_on_selector_all(
-            "a[href*='set']",
-            "els => els.map(e => ({href: e.getAttribute('href'), text: e.innerText.trim()}))",
-        )
-        for a in anchors:
-            if a["href"] and a["text"] and len(a["text"]) > 3:
-                sets.append({"name": a["text"], "url": urljoin(BASE, a["href"])})
-        return _dedupe(sets)
-
-    # ------------------------------------------------------------------ #
-    #  Stage 1: set checklist -> all cards with pop + gem rate
-    # ------------------------------------------------------------------ #
-    def scrape_set(self, set_url, set_name=""):
-        self._goto(set_url)
+        html = self.page.content()
+        rows = extract_rowdata(html)
+        if self.debug:
+            print(f"  [debug] RowData rows extracted: {len(rows)}")
+            if not rows:
+                print("  [debug] no RowData found — page structure may have changed")
         cards = []
-
-        # JSON first
-        for blob in self._captured_json:
-            for item in _walk_for_cards(blob["body"]):
-                row = _card_from_json(item, set_name, set_url)
-                if row:
-                    cards.append(row)
-        if cards:
-            return cards
-
-        # DOM fallback: parse the rendered checklist table
-        rows = self.page.eval_on_selector_all(
-            "table tr",
-            """rows => rows.map(r => {
-                const cells = Array.from(r.querySelectorAll('td,th')).map(c => c.innerText.trim());
-                const link = r.querySelector('a');
-                return {cells, href: link ? link.getAttribute('href') : null};
-            })""",
-        )
-        if not rows:
-            return cards
-        header = [h.lower() for h in rows[0]["cells"]]
-        idx = _header_index(header)
-        for r in rows[1:]:
-            row = _card_from_dom(r, idx, set_name, set_url)
+        for item in rows:
+            row = card_from_row(item)
             if row:
                 cards.append(row)
         return cards
-
-    # ------------------------------------------------------------------ #
-    #  Stage 2: card page -> recent comps + grade breakdown
-    # ------------------------------------------------------------------ #
-    def scrape_card(self, card: CardRow):
-        self._goto(card.url)
-
-        # JSON first
-        for blob in self._captured_json:
-            comps = _walk_for_comps(blob["body"])
-            if comps:
-                card.comps = comps
-            grades = _walk_for_grades(blob["body"])
-            if grades:
-                card.grade_breakdown = grades
-        if card.comps:
-            return card
-
-        # DOM fallback: look for a sales/comps table (date + $price rows)
-        text_rows = self.page.eval_on_selector_all(
-            "table tr",
-            """rows => rows.map(r =>
-                Array.from(r.querySelectorAll('td')).map(c => c.innerText.trim())
-            )""",
-        )
-        for cells in text_rows:
-            joined = " ".join(cells)
-            price = _parse_price(joined)
-            date = _parse_date(joined)
-            if price and date:
-                grade = next((c for c in cells if re.match(r"^(PSA|BGS|SGC|CGC)?\s*\d{1,2}(\.5)?$", c)), "")
-                card.comps.append({"date": date, "price": price, "grade": grade})
-        return card
-
-
-# ---------------------------------------------------------------------- #
-#  JSON walkers — tolerant of unknown response shapes
-# ---------------------------------------------------------------------- #
-def _iter_dicts(obj):
-    if isinstance(obj, dict):
-        yield obj
-        for v in obj.values():
-            yield from _iter_dicts(v)
-    elif isinstance(obj, list):
-        for v in obj:
-            yield from _iter_dicts(v)
-
-
-def _walk_for_sets(body):
-    out = []
-    for d in _iter_dicts(body):
-        keys = {k.lower() for k in d.keys()}
-        if ("name" in keys or "set_name" in keys or "title" in keys) and (
-            "slug" in keys or "url" in keys or "href" in keys
-        ):
-            out.append(d)
-    return out
-
-
-def _walk_for_cards(body):
-    out = []
-    for d in _iter_dicts(body):
-        keys = {k.lower() for k in d.keys()}
-        has_pop = bool(keys & {"total_pop", "population", "total", "pop"})
-        has_gem = bool(keys & {"gem_rate", "gemrate", "gem_pct", "gems", "gem_pop"})
-        has_name = bool(keys & {"card_name", "name", "player", "subject"})
-        if has_pop and has_gem and has_name:
-            out.append(d)
-    return out
-
-
-def _walk_for_comps(body):
-    comps = []
-    for d in _iter_dicts(body):
-        keys = {k.lower() for k in d.keys()}
-        if keys & {"sale_price", "price", "sold_price"} and keys & {"sale_date", "date", "sold_date", "end_date"}:
-            price = _first(d, ["sale_price", "price", "sold_price"])
-            date = _first(d, ["sale_date", "date", "sold_date", "end_date"])
-            grade = _first(d, ["grade", "grade_name", "psa_grade"]) or ""
-            p = _parse_price(str(price))
-            dt = _parse_date(str(date))
-            if p and dt:
-                comps.append({"date": dt, "price": p, "grade": str(grade)})
-    return comps
-
-
-def _walk_for_grades(body):
-    for d in _iter_dicts(body):
-        keys = {k.lower() for k in d.keys()}
-        # dicts that look like {"10": n, "9": n, "8": n, ...}
-        numeric_keys = [k for k in keys if re.match(r"^\d{1,2}(\.5)?$", k)]
-        if len(numeric_keys) >= 4:
-            return {k: d[k] for k in d if re.match(r"^\d{1,2}(\.5)?$", str(k))}
-    return {}
-
-
-def _first(d, keys):
-    lower = {k.lower(): v for k, v in d.items()}
-    for k in keys:
-        if k in lower:
-            return lower[k]
-    return None
-
-
-def _card_from_json(item, set_name, set_url):
-    name = _first(item, ["card_name", "name", "player", "subject"])
-    total = _to_int(_first(item, ["total_pop", "population", "total", "pop"]))
-    gem_pop = _to_int(_first(item, ["gem_pop", "gems"]))
-    gem_rate = _to_float(_first(item, ["gem_rate", "gemrate", "gem_pct"]))
-    number = str(_first(item, ["card_number", "number", "num"]) or "")
-    link = _first(item, ["url", "slug", "href"])
-    if not name or total is None:
-        return None
-    if gem_rate is None and gem_pop is not None and total:
-        gem_rate = round(100.0 * gem_pop / total, 2)
-    if gem_pop is None and gem_rate is not None:
-        gem_pop = int(total * gem_rate / 100.0)
-    return CardRow(
-        set_name=set_name,
-        card_name=str(name),
-        card_number=number,
-        url=urljoin(BASE, str(link)) if link else set_url,
-        total_pop=total,
-        gem_pop=gem_pop or 0,
-        gem_rate_pct=gem_rate if gem_rate is not None else 0.0,
-    )
-
-
-def _header_index(header):
-    idx = {}
-    for i, h in enumerate(header):
-        if "card" in h or "player" in h or "name" in h:
-            idx.setdefault("name", i)
-        if h in ("#", "no", "num") or "number" in h:
-            idx.setdefault("number", i)
-        if "pop" in h and "gem" not in h:
-            idx.setdefault("pop", i)
-        if "gem" in h and ("%" in h or "rate" in h):
-            idx.setdefault("gem_rate", i)
-        elif "gem" in h:
-            idx.setdefault("gem_pop", i)
-    return idx
-
-
-def _card_from_dom(row, idx, set_name, set_url):
-    cells = row["cells"]
-    if "name" not in idx or "pop" not in idx:
-        return None
-    try:
-        name = cells[idx["name"]]
-        total = _to_int(cells[idx["pop"]])
-        if not name or total is None:
-            return None
-        gem_rate = _to_float(cells[idx["gem_rate"]]) if "gem_rate" in idx and idx["gem_rate"] < len(cells) else None
-        gem_pop = _to_int(cells[idx["gem_pop"]]) if "gem_pop" in idx and idx["gem_pop"] < len(cells) else None
-        if gem_rate is None and gem_pop is not None and total:
-            gem_rate = round(100.0 * gem_pop / total, 2)
-        if gem_pop is None and gem_rate is not None:
-            gem_pop = int(total * gem_rate / 100.0)
-        number = cells[idx["number"]] if "number" in idx and idx["number"] < len(cells) else ""
-        return CardRow(
-            set_name=set_name,
-            card_name=name,
-            card_number=number,
-            url=urljoin(BASE, row["href"]) if row["href"] else set_url,
-            total_pop=total,
-            gem_pop=gem_pop or 0,
-            gem_rate_pct=gem_rate if gem_rate is not None else 0.0,
-        )
-    except (IndexError, ValueError):
-        return None
 
 
 # ---------------------------------------------------------------------- #
@@ -433,41 +267,3 @@ def _to_int(v):
         return int(float(str(v).replace(",", "").replace("%", "").strip()))
     except ValueError:
         return None
-
-
-def _to_float(v):
-    if v is None:
-        return None
-    try:
-        return float(str(v).replace(",", "").replace("%", "").strip())
-    except ValueError:
-        return None
-
-
-def _parse_price(text):
-    m = re.search(r"\$\s*([\d,]+(?:\.\d{1,2})?)", text)
-    return float(m.group(1).replace(",", "")) if m else None
-
-
-def _parse_date(text):
-    for fmt, pattern in [
-        ("%Y-%m-%d", r"\d{4}-\d{2}-\d{2}"),
-        ("%m/%d/%Y", r"\d{1,2}/\d{1,2}/\d{4}"),
-        ("%b %d, %Y", r"[A-Z][a-z]{2} \d{1,2}, \d{4}"),
-    ]:
-        m = re.search(pattern, text)
-        if m:
-            try:
-                return datetime.strptime(m.group(0), fmt).date().isoformat()
-            except ValueError:
-                continue
-    return None
-
-
-def _dedupe(items):
-    seen, out = set(), []
-    for it in items:
-        if it["url"] not in seen:
-            seen.add(it["url"])
-            out.append(it)
-    return out

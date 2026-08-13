@@ -20,7 +20,7 @@ BASE = "https://www.gemrate.com"
 
 DEFAULT_URLS = [
     BASE,
-    f"{BASE}/sets?grader=psa&category=basketball-cards",
+    f"{BASE}/top-cards?grader=psa&category=basketball-cards",
 ]
 
 
