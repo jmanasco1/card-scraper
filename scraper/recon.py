@@ -14,6 +14,8 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
+from .gemrate import default_headless, launch_browser, wait_for_challenge
+
 BASE = "https://www.gemrate.com"
 
 DEFAULT_URLS = [
@@ -24,13 +26,8 @@ DEFAULT_URLS = [
 
 def recon(urls):
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        ctx = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-            )
-        )
+        browser = launch_browser(pw, headless=default_headless())
+        ctx = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = ctx.new_page()
         captured = []
 
@@ -49,10 +46,17 @@ def recon(urls):
             captured.clear()
             print(f"\n{'=' * 70}\nRECON {url}")
             try:
-                resp = page.goto(url, wait_until="networkidle", timeout=60000)
+                resp = page.goto(url, wait_until="domcontentloaded", timeout=60000)
             except Exception as e:
                 print(f"  goto failed: {e}")
                 continue
+            cleared = wait_for_challenge(page)
+            try:
+                page.wait_for_load_state("networkidle", timeout=30000)
+            except Exception:
+                pass
+            if not cleared:
+                print("  !! Cloudflare challenge did not clear")
             print(f"  status: {resp.status if resp else '?'}")
             print(f"  final url: {page.url}")
             print(f"  title: {page.title()!r}")

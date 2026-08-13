@@ -15,6 +15,7 @@ Two-stage funnel:
 """
 
 import json
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -24,6 +25,41 @@ from urllib.parse import urljoin
 from playwright.sync_api import sync_playwright
 
 BASE = "https://www.gemrate.com"
+
+# Cloudflare sits in front of gemrate.com and serves a JS challenge
+# ("Just a moment...") to anything that looks automated. Headless mode is the
+# strongest bot signal, so CI runs headful under xvfb (GEMRATE_HEADFUL=1),
+# prefer real Google Chrome over Playwright's bundled Chromium, keep the
+# browser's own user agent, and wait for the challenge to clear — the
+# cf_clearance cookie then covers the rest of the session.
+LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled"]
+CHALLENGE_TITLES = ("just a moment", "attention required")
+
+
+def default_headless():
+    return os.environ.get("GEMRATE_HEADFUL", "") != "1"
+
+
+def launch_browser(pw, headless):
+    try:
+        return pw.chromium.launch(channel="chrome", headless=headless, args=LAUNCH_ARGS)
+    except Exception:
+        return pw.chromium.launch(headless=headless, args=LAUNCH_ARGS)
+
+
+def wait_for_challenge(page, timeout_s=60):
+    """Wait until the page title is no longer a Cloudflare challenge.
+    Returns True if clear, False if the challenge never resolved."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            title = page.title().lower()
+        except Exception:
+            title = ""
+        if title and not any(t in title for t in CHALLENGE_TITLES):
+            return True
+        time.sleep(2)
+    return False
 
 
 @dataclass
@@ -40,17 +76,14 @@ class CardRow:
 
 
 class GemRateClient:
-    def __init__(self, delay_seconds=1.5, headless=True, debug=False):
+    def __init__(self, delay_seconds=1.5, headless=None, debug=False):
         self.delay = delay_seconds
         self.debug = debug
+        if headless is None:
+            headless = default_headless()
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=headless)
-        self._ctx = self._browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-            )
-        )
+        self._browser = launch_browser(self._pw, headless)
+        self._ctx = self._browser.new_context(viewport={"width": 1920, "height": 1080})
         self.page = self._ctx.new_page()
         self._captured_json = []
         self.page.on("response", self._capture_json)
@@ -75,11 +108,17 @@ class GemRateClient:
 
     def _goto(self, url):
         self._captured_json = []
-        resp = self.page.goto(url, wait_until="networkidle", timeout=60000)
+        resp = self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        cleared = wait_for_challenge(self.page)
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception:
+            pass
         time.sleep(self.delay)
         if self.debug:
             status = resp.status if resp else "?"
-            print(f"  [debug] GET {url} -> {status} | title: {self.page.title()!r}")
+            note = "" if cleared else " | CHALLENGE NOT CLEARED"
+            print(f"  [debug] GET {url} -> {status} | title: {self.page.title()!r}{note}")
             if not self._captured_json:
                 print("  [debug] no JSON responses captured")
             for blob in self._captured_json:
