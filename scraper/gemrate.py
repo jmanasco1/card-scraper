@@ -32,8 +32,31 @@ BASE = "https://www.gemrate.com"
 # prefer real Google Chrome over Playwright's bundled Chromium, keep the
 # browser's own user agent, and wait for the challenge to clear — the
 # cf_clearance cookie then covers the rest of the session.
-LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled"]
-CHALLENGE_TITLES = ("just a moment", "attention required")
+LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-infobars",
+    "--start-maximized",
+]
+CHALLENGE_TITLES = ("just a moment", "attention required", "verifying you are human")
+
+# Injected before any page script runs, to erase the most common
+# automation fingerprints Cloudflare looks for.
+STEALTH_JS = """
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+window.chrome = window.chrome || {runtime: {}};
+const origQuery = window.navigator.permissions && window.navigator.permissions.query;
+if (origQuery) {
+    window.navigator.permissions.query = (p) => (
+        p && p.name === 'notifications'
+            ? Promise.resolve({state: Notification.permission})
+            : origQuery(p)
+    );
+}
+"""
 
 
 def default_headless():
@@ -41,10 +64,24 @@ def default_headless():
 
 
 def launch_browser(pw, headless):
-    try:
-        return pw.chromium.launch(channel="chrome", headless=headless, args=LAUNCH_ARGS)
-    except Exception:
-        return pw.chromium.launch(headless=headless, args=LAUNCH_ARGS)
+    """Prefer real Google Chrome (best Cloudflare pass rate); fall back to
+    the msedge channel, then bundled Chromium."""
+    for channel in ("chrome", "msedge"):
+        try:
+            return pw.chromium.launch(channel=channel, headless=headless, args=LAUNCH_ARGS)
+        except Exception:
+            continue
+    return pw.chromium.launch(headless=headless, args=LAUNCH_ARGS)
+
+
+def new_stealth_context(browser):
+    ctx = browser.new_context(
+        viewport={"width": 1920, "height": 1080},
+        locale="en-US",
+        timezone_id="America/New_York",
+    )
+    ctx.add_init_script(STEALTH_JS)
+    return ctx
 
 
 def wait_for_challenge(page, timeout_s=60):
@@ -83,7 +120,7 @@ class GemRateClient:
             headless = default_headless()
         self._pw = sync_playwright().start()
         self._browser = launch_browser(self._pw, headless)
-        self._ctx = self._browser.new_context(viewport={"width": 1920, "height": 1080})
+        self._ctx = new_stealth_context(self._browser)
         self.page = self._ctx.new_page()
         self._captured_json = []
         self.page.on("response", self._capture_json)

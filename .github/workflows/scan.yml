@@ -59,6 +59,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
+          # Real Google Chrome passes Cloudflare far better than bundled Chromium
+          playwright install --with-deps chrome
           playwright install --with-deps chromium
 
       - name: Site recon (debug only)

@@ -14,7 +14,7 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-from .gemrate import default_headless, launch_browser, wait_for_challenge
+from .gemrate import default_headless, launch_browser, new_stealth_context, wait_for_challenge
 
 BASE = "https://www.gemrate.com"
 
@@ -27,7 +27,7 @@ DEFAULT_URLS = [
 def recon(urls):
     with sync_playwright() as pw:
         browser = launch_browser(pw, headless=default_headless())
-        ctx = browser.new_context(viewport={"width": 1920, "height": 1080})
+        ctx = new_stealth_context(browser)
         page = ctx.new_page()
         captured = []
 
