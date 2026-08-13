@@ -38,7 +38,21 @@ def build_query(metrics):
     return " ".join(p for p in parts if p).strip()
 
 
-def fetch_comps(page, query, delay=1.5, debug=False):
+def build_ebay_url(metrics):
+    """The eBay 'sold listings' search URL for a card — open it to eyeball
+    real recent PSA-10 solds without tripping eBay's scraper captcha."""
+    return EBAY_SOLD.format(q=quote_plus(build_query(metrics)))
+
+
+def _looks_like_captcha(page):
+    try:
+        t = (page.title() or "").lower()
+    except Exception:
+        t = ""
+    return any(s in t for s in ("captcha", "pardon our interruption", "security measure", "robot"))
+
+
+def fetch_comps(page, query, delay=1.5, debug=False, interactive=False):
     """Return recent sold comps [{'date': iso, 'price': float}] for a query,
     newest first, restricted to titles that look like PSA 10 sales."""
     url = EBAY_SOLD.format(q=quote_plus(query))
@@ -51,6 +65,22 @@ def fetch_comps(page, query, delay=1.5, debug=False):
     import time
 
     time.sleep(delay)
+
+    # eBay throws a captcha wall at automation. If we're running visibly
+    # (interactive), pause so a human can solve it; otherwise give up on this
+    # lookup rather than hang.
+    if _looks_like_captcha(page):
+        if not interactive:
+            if debug:
+                print(f"    [debug] eBay captcha for {query!r} — skipping (use --comps to solve manually)")
+            return []
+        print(f"    !! eBay captcha — solve it in the Chrome window; waiting up to 120s ({query})")
+        deadline = time.time() + 120
+        while time.time() < deadline and _looks_like_captcha(page):
+            time.sleep(3)
+        if _looks_like_captcha(page):
+            print("    !! still blocked, skipping this card")
+            return []
 
     items = page.eval_on_selector_all(
         "li.s-item",

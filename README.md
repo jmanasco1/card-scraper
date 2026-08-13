@@ -6,14 +6,16 @@ Finds cards with **high population + low gem rate** — heavily graded cards tha
 
 ## How it works
 
-Single stage, using GemRate's **Top Cards** report:
+1. Load GemRate's **Top Cards** report `/top-cards?grader=psa&category=<sport>` in a real browser (required — the site is behind Cloudflare) and pull the dataset embedded in the page (`var RowData = JSON.parse(...)`) — the top ~100 most-graded cards, each with population + gem count.
+2. **Filter:** keep cards with population ≥ min and gem rate ≤ max, pre-rank by scarcity.
+3. **Comps:** each result gets a one-click **eBay "sold listings" link** so you can check recent prices by hand. Optionally (`--comps`) the tool auto-scrapes eBay PSA-10 solds and computes price momentum — but eBay throws captchas at automation, so that mode needs you to solve them in the visible browser. For hands-off automated momentum, use CardLadder (paid) — every GemRate card maps to it.
+4. **Rank:** price momentum (when comps are available) + gem-rate scarcity + sales activity. Weights are in `config.json`.
 
-1. Load `/top-cards?grader=psa&category=<sport>` in a real browser (required — the site is behind Cloudflare).
-2. Pull the dataset embedded in the page (`var RowData = JSON.parse(...)`) — the top ~100 most-graded cards for that sport, each with population and gem count.
-3. **Filter:** keep cards with population ≥ min and gem rate ≤ max.
-4. **Rank:** gem-rate tightness (scaled by log-population) + grading volume. Weights are in `config.json`.
+Results land in `results/` as CSV, JSON, and a markdown summary table (with the eBay links).
 
-Results land in `results/` as CSV, JSON, and a markdown summary table.
+### On sale prices / "undervalued"
+
+GemRate removed sale prices from its site (moved to its CardLadder integration), so the price signal has to come from elsewhere. eBay is the free source but actively blocks scraping with captchas — this is the genuinely hard part of the domain and why paid tools exist. The default run therefore hands you eBay sold-search links to eyeball; `--comps` attempts automation with manual captcha-solving.
 
 ## Setup
 
@@ -32,9 +34,10 @@ pip install -r requirements.txt
 playwright install chrome
 # Windows: set GEMRATE_HEADFUL=1     (macOS/Linux: export GEMRATE_HEADFUL=1)
 python -m scraper.scan --sport basketball --debug
+# add --comps to auto-scrape eBay momentum (you'll solve captchas in the browser)
 ```
 
-Then look in `results/` for `latest_basketball.csv` and `summary_basketball.md`.
+Then look in `results/` for `latest_basketball.csv` and `summary_basketball.md`. Each row has an eBay sold-listings link — click it to see recent PSA-10 sale prices for that card.
 
 ## Tuning
 

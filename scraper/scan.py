@@ -44,6 +44,8 @@ def main():
     parser.add_argument("--reset", action="store_true", help="(kept for compatibility; no-op)")
     parser.add_argument("--max-sets", type=int, default=None, help="(kept for compatibility; no-op)")
     parser.add_argument("--max-cards", type=int, default=None, help="max candidates to look up on eBay")
+    parser.add_argument("--comps", action="store_true",
+                        help="also auto-scrape eBay sold comps (expect captchas to solve manually)")
     parser.add_argument("--debug", action="store_true", help="log page status and per-card comp counts")
     args = parser.parse_args()
 
@@ -75,22 +77,33 @@ def main():
 
         candidates = [m for c in cards if (m := analyze(c, filters))]
         candidates.sort(key=lambda m: scarcity(m, max_gem), reverse=True)
+        # Every card gets a one-click eBay "sold listings" link to check prices
+        # by hand — reliable, no captcha (you're the one clicking).
+        for m in candidates:
+            m["ebay_url"] = comps_mod.build_ebay_url(m)
         print(f"{len(candidates)} pass pop>={filters['min_total_population']}, "
               f"gem rate<={max_gem}%")
 
-        # ---- eBay comps for the strongest scarcity candidates --------------
-        lookups = candidates[:lookup_limit]
-        print(f"\nLooking up recent eBay PSA-10 comps for top {len(lookups)} candidates...")
-        for i, m in enumerate(lookups, 1):
-            query = comps_mod.build_query(m)
-            comps = comps_mod.fetch_comps(
-                client.page, query, delay=limits["request_delay_seconds"], debug=args.debug
-            )
-            summary = comps_mod.summarize(comps, filters.get("min_recent_sales", 3))
-            if summary:
-                m.update(summary)
-            if not args.debug and i % 10 == 0:
-                print(f"  {i}/{len(lookups)} looked up")
+        # ---- optional: auto-scrape eBay comps for momentum -----------------
+        if args.comps:
+            lookups = candidates[:lookup_limit]
+            print(f"\n--comps: scraping eBay PSA-10 solds for top {len(lookups)} "
+                  f"candidates (solve any captchas in the Chrome window)...")
+            for i, m in enumerate(lookups, 1):
+                query = comps_mod.build_query(m)
+                comps = comps_mod.fetch_comps(
+                    client.page, query, delay=limits["request_delay_seconds"],
+                    debug=args.debug, interactive=True,
+                )
+                summary = comps_mod.summarize(comps, filters.get("min_recent_sales", 3))
+                if summary:
+                    m.update(summary)
+                if not args.debug and i % 10 == 0:
+                    print(f"  {i}/{len(lookups)} looked up")
+        else:
+            print("\n(Skipping eBay auto-scrape. Each result includes an eBay "
+                  "sold-listings link to check prices by hand. Use --comps to "
+                  "auto-scrape momentum, but expect to solve captchas.)")
 
         # Optionally drop cards whose latest comp is below the price floor
         min_price = filters.get("min_price_usd", 0)
@@ -121,7 +134,8 @@ def write_outputs(sport, ranked):
     fields = [
         "score", "year", "set", "card", "number", "parallel",
         "total_pop", "gem_pop", "gem_rate_pct",
-        "recent_sales", "oldest_comp", "latest_comp", "momentum_pct", "url",
+        "recent_sales", "oldest_comp", "latest_comp", "momentum_pct",
+        "ebay_url", "url",
     ]
     with open(csv_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
@@ -133,8 +147,8 @@ def write_outputs(sport, ranked):
     md.append("Ranked by price momentum (recent eBay PSA-10 solds) + gem-rate "
               "scarcity + sales activity. A dash in the comp columns means too "
               "few recent sales to judge momentum — verify manually.\n")
-    md.append("| # | Card | Year | Set | Pop | Gem % | Comps | $ trend | Mom. | Score |")
-    md.append("|---|------|------|-----|-----|-------|-------|---------|------|-------|")
+    md.append("| # | Card | Year | Set | Pop | Gem % | Comps | $ trend | Mom. | Score | Check |")
+    md.append("|---|------|------|-----|-----|-------|-------|---------|------|-------|-------|")
     for i, r in enumerate(ranked[:25], 1):
         if r["recent_sales"]:
             trend = f"${r['oldest_comp']:,.0f}→${r['latest_comp']:,.0f}"
@@ -142,9 +156,10 @@ def write_outputs(sport, ranked):
             n = str(r["recent_sales"])
         else:
             trend, mom, n = "—", "—", "—"
+        link = f"[eBay solds]({r['ebay_url']})" if r.get("ebay_url") else ""
         md.append(
             f"| {i} | {r['card']} #{r['number']} | {r['year']} | {r['set']} "
-            f"| {r['total_pop']:,} | {r['gem_rate_pct']}% | {n} | {trend} | {mom} | {r['score']} |"
+            f"| {r['total_pop']:,} | {r['gem_rate_pct']}% | {n} | {trend} | {mom} | {r['score']} | {link} |"
         )
     (RESULTS / f"summary_{sport}.md").write_text("\n".join(md) + "\n")
 
