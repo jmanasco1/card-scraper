@@ -13,14 +13,14 @@ from pathlib import Path
 
 CACHE_PATH = Path(__file__).resolve().parent.parent / "results" / ".price_cache.json"
 
-_FIELDS = ("p10_median", "p10_sales", "p10_spread",
-           "p9_median", "p9_sales", "p9_spread")
+_FIELDS = ("p10_median", "p10_sales", "p10_spread", "p10_low", "p10_high",
+           "p9_median", "p9_sales", "p9_spread", "p9_low", "p9_high")
 
 # Bumped whenever a change to comp matching invalidates prices collected under
 # the old rules. Entries from an older version are ignored rather than reused,
 # so a fix to what counts as a comp actually takes effect instead of being
 # masked by cached results gathered before it.
-VERSION = 2
+VERSION = 3
 
 
 def card_key(m):

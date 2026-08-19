@@ -8,6 +8,7 @@ cards and doesn't just re-rank by fame the way the old version did.
 """
 
 import math
+import statistics
 import random
 import sys
 import unittest
@@ -380,3 +381,31 @@ class TestBadCompRejection(unittest.TestCase):
             score_card(m, model)
         ranked = rank(cards, WEIGHTS, 3, min_edge_usd=25.0)
         self.assertNotIn(id(penny), [id(m) for m in ranked])
+
+
+class TestPaddingAndOutliers(unittest.TestCase):
+    """eBay pads a thin result set with loosely-related listings under a
+    "Results matching fewer words" heading. Counting those priced a 1990 Hoops
+    common at $569 while a heavily-traded Kobe priced correctly — the giveaway
+    being that only obscure cards were wrong."""
+
+    def test_mad_filter_survives_heavy_high_side_contamination(self):
+        real = [1.5, 2, 2, 2.5, 3, 2, 2.25, 3.5, 2, 2.75, 1.75, 2.5]
+        contaminated = real + [450, 569, 720, 380]
+        clean = statistics.median(comps._trimmed(real))
+        got = statistics.median(comps._trimmed(contaminated))
+        self.assertAlmostEqual(got, clean, delta=0.75,
+                               msg="wrong-card listings must not move the median")
+
+    def test_identical_prices_with_one_outlier(self):
+        prices = [20.0] * 8 + [1500.0]
+        self.assertLess(max(comps._trimmed(prices)), 100.0)
+
+    def test_small_sets_are_left_alone(self):
+        self.assertEqual(comps._trimmed([10.0, 12.0, 11.0]), [10.0, 11.0, 12.0])
+
+    def test_padding_markers_cover_ebays_wording(self):
+        for phrase in ("Results matching fewer words", "Shop on eBay"):
+            self.assertTrue(
+                any(m in phrase.lower() for m in comps._PADDING_MARKERS),
+                f"{phrase!r} must be recognised as the start of padding")

@@ -175,27 +175,68 @@ def _wait_out_captcha(page, query, interactive, debug):
     return True
 
 
+# eBay pads a thin result set rather than returning nothing: once the real
+# matches run out it appends a band of loosely-related listings under a heading
+# like "Results matching fewer words". Those are different cards — usually more
+# expensive ones, since popular cards dominate the fallback — and counting them
+# is why an obscure common priced like a star's rookie while a heavily-traded
+# card priced correctly. Everything from that heading onwards is discarded.
+_PADDING_MARKERS = (
+    "results matching fewer words",
+    "matching fewer words",
+    "shop on ebay",
+    "related searches",
+    "you may also like",
+    "similar items",
+    "explore related",
+)
+
+_SCRAPE_JS = """
+(sels) => {
+  const [itemSel, titleSel, priceSel, markers] = sels;
+  const nodes = Array.from(document.querySelectorAll(itemSel + ', h2, h3'));
+  const out = [];
+  for (const n of nodes) {
+    const tag = n.tagName.toLowerCase();
+    if (tag === 'h2' || tag === 'h3') {
+      const txt = (n.innerText || '').trim().toLowerCase();
+      if (txt && markers.some(m => txt.includes(m))) break;   // padding starts here
+      continue;
+    }
+    if (!n.matches(itemSel)) continue;
+    const blob = (n.innerText || '').toLowerCase();
+    if (blob.includes('sponsored')) continue;
+    const t = n.querySelector(titleSel);
+    const p = n.querySelector(priceSel);
+    const title = t ? t.innerText.trim() : '';
+    if (!title || /shop on ebay/i.test(title)) continue;
+    out.push({
+      title: title,
+      price: p ? p.innerText.trim() : '',
+      text: n.innerText.trim()
+    });
+  }
+  return out;
+}
+"""
+
+
 def _scrape_listings(page):
-    """Pull (title, price-text, full-text) for each result row. eBay serves two
-    different card markups depending on the A/B bucket, so try both."""
-    for selector, title_sel, price_sel in (
+    """Pull (title, price-text, full-text) for each genuine result row.
+
+    Walks the results in document order and stops at eBay's padding heading, so
+    only listings that actually matched the search are returned. eBay serves a
+    few different markups depending on the A/B bucket, so several selector sets
+    are tried.
+    """
+    for item_sel, title_sel, price_sel in (
         ("li.s-item", ".s-item__title", ".s-item__price"),
         ("li.s-card", ".s-card__title", ".s-card__price"),
         ("[data-testid='item-card']", "[role='heading']", ".s-card__price"),
     ):
         try:
-            items = page.eval_on_selector_all(
-                selector,
-                """(els, sels) => els.map(e => {
-                    const t = e.querySelector(sels[0]);
-                    const p = e.querySelector(sels[1]);
-                    return {
-                        title: t ? t.innerText.trim() : '',
-                        price: p ? p.innerText.trim() : '',
-                        text: e.innerText.trim()
-                    };
-                })""",
-                [title_sel, price_sel],
+            items = page.evaluate(
+                _SCRAPE_JS, [item_sel, title_sel, price_sel, list(_PADDING_MARKERS)]
             )
         except Exception:
             continue
@@ -205,11 +246,33 @@ def _scrape_listings(page):
 
 
 def _trimmed(prices, trim=0.15):
-    """Drop the extreme tails before averaging. eBay sold data always carries a
-    few nonsense prices (best-offer artifacts, mislabeled slabs)."""
-    if len(prices) < 5:
+    """Drop prices that can't plausibly be the same card as the rest.
+
+    Percentile trimming alone assumes contamination is small and symmetric.
+    It isn't: a handful of wrong-card listings survive the title filter and
+    they skew high, because expensive cards are the ones that get listed with
+    lots of extra words. So outliers are cut by distance from the median in
+    units of median absolute deviation, which doesn't care how many are on one
+    side, and only then are the tails trimmed.
+    """
+    if len(prices) < 4:
         return sorted(prices)
     s = sorted(prices)
+    med = statistics.median(s)
+    devs = [abs(p - med) for p in s]
+    mad = statistics.median(devs)
+    if mad > 0:
+        kept = [p for p in s if abs(p - med) <= 4.0 * mad]
+    else:
+        # Every price identical bar a few: keep those within 25% of the median.
+        kept = [p for p in s if abs(p - med) <= 0.25 * med] or s
+    if len(kept) >= 3:
+        # MAD has already removed what doesn't belong; trimming the tails on
+        # top of it would just discard real sales and narrow the range the
+        # report shows for sanity-checking.
+        return kept
+    if len(s) < 5:
+        return s
     k = max(1, int(len(s) * trim))
     return s[k:-k] or s
 
@@ -312,4 +375,8 @@ def price_card(page, metrics, delay=1.5, debug=False, interactive=True, stats=No
         metrics[f"{prefix}_median"] = res["median"] if res else None
         metrics[f"{prefix}_sales"] = res["sales"] if res else 0
         metrics[f"{prefix}_spread"] = res["spread"] if res else None
+        # Carried into the report so a nonsense comp set is visible without
+        # opening eBay: a $2 card showing a $2-$720 range is obviously wrong.
+        metrics[f"{prefix}_low"] = res["low"] if res else None
+        metrics[f"{prefix}_high"] = res["high"] if res else None
     return bool(ten and nine)

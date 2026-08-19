@@ -21,6 +21,15 @@ def _bar(pct, cap=60.0):
     return max(0.0, min(100.0, abs(pct) / cap * 100.0))
 
 
+def _range(r, prefix):
+    """Low-high of the comps behind a median. A range that spans orders of
+    magnitude is the clearest sign the search matched more than one card."""
+    lo, hi = r.get(f"{prefix}_low"), r.get(f"{prefix}_high")
+    if not lo or not hi:
+        return ""
+    return f"${lo:,.0f}–${hi:,.0f}"
+
+
 def _conf_label(c):
     if c >= 0.75:
         return "solid", "Backed by deep comps on both grades"
@@ -56,8 +65,8 @@ def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
         </td>
         <td class="num-col">{r.get('total_pop', 0):,}</td>
         <td class="num-col">{r.get('gem_rate_pct', 0)}%</td>
-        <td class="num-col">${(r.get('p9_median') or 0):,.0f}<span class="n">{r.get('p9_sales', 0)}</span></td>
-        <td class="num-col buy">${(r.get('p10_median') or 0):,.0f}<span class="n">{r.get('p10_sales', 0)}</span></td>
+        <td class="num-col">${(r.get('p9_median') or 0):,.0f}<span class="n">{r.get('p9_sales', 0)}</span><span class="rng">{_range(r, 'p9')}</span></td>
+        <td class="num-col buy">${(r.get('p10_median') or 0):,.0f}<span class="n">{r.get('p10_sales', 0)}</span><span class="rng">{_range(r, 'p10')}</span></td>
         <td class="num-col worth">${(r.get('fair_p10') or 0):,.0f}<span class="head">{(r.get('headroom_usd') or 0):+,.0f}</span></td>
         <td class="num-col ratio">{r.get('gap')}×<span class="n">vs {r.get('expected_gap')}×</span></td>
         <td class="disc {sign}">
@@ -195,6 +204,7 @@ TEMPLATE = """<!doctype html>
   .cset {{ color:var(--muted); font-size:12.5px; margin-top:1px; }}
   .num-col {{ font-variant-numeric:tabular-nums; white-space:nowrap; }}
   .num-col .n {{ display:block; color:var(--muted); font-size:11.5px; }}
+  .num-col .rng {{ display:block; color:var(--muted); font-size:11px; opacity:.8; }}
   .num-col .n::before {{ content:"n="; }}
   .ratio .n::before {{ content:""; }}
   .buy {{ font-weight:600; }}
@@ -270,6 +280,10 @@ TEMPLATE = """<!doctype html>
   </div>
 
   <footer>
+    <p><b>Sanity-check the range first.</b> Under each price is the spread of
+    the sales behind it. If a card you know to be worth a few dollars shows a
+    range running into the hundreds, the search caught more than one card and
+    that row is junk — the surest tell there is, and quicker than opening eBay.</p>
     <p><b>Before you buy anything:</b> open both eBay links and check the comps
     are genuinely the same card — same year, same parallel, same number. Thin
     comps are the usual reason a discount evaporates on inspection, which is
