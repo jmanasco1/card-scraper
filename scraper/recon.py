@@ -10,11 +10,13 @@ Usage:
 """
 
 import json
+import os
 import sys
+import time
 
 from playwright.sync_api import sync_playwright
 
-from .gemrate import default_headless, launch_browser, new_stealth_context, wait_for_challenge
+from .gemrate import launch_browser, new_stealth_context, wait_for_challenge
 
 BASE = "https://www.gemrate.com"
 
@@ -29,8 +31,16 @@ DEFAULT_URLS = [
 
 
 def recon(urls):
+    # Recon defaults to a *visible* browser, unlike the rest of the codebase.
+    # It is only ever run by hand, and headless is the clearest signal
+    # Cloudflare blocks — a headless recon just sits in the challenge until it
+    # times out, which reads as a hang rather than a block. Set
+    # GEMRATE_HEADLESS=1 to override.
+    headless = os.environ.get("GEMRATE_HEADLESS", "") == "1"
+    print(f"Launching a {'headless' if headless else 'visible'} browser. "
+          f"Each page can take up to a minute while Cloudflare clears.\n")
     with sync_playwright() as pw:
-        browser = launch_browser(pw, headless=default_headless())
+        browser = launch_browser(pw, headless=headless)
         ctx = new_stealth_context(browser)
         page = ctx.new_page()
         captured = []
@@ -49,18 +59,24 @@ def recon(urls):
         for url in urls:
             captured.clear()
             print(f"\n{'=' * 70}\nRECON {url}")
+            started = time.time()
+            print("  loading...", flush=True)
             try:
                 resp = page.goto(url, wait_until="domcontentloaded", timeout=60000)
             except Exception as e:
                 print(f"  goto failed: {e}")
                 continue
+            print(f"  loaded in {time.time() - started:.0f}s, "
+                  f"waiting for Cloudflare...", flush=True)
             cleared = wait_for_challenge(page)
             try:
                 page.wait_for_load_state("networkidle", timeout=30000)
             except Exception:
                 pass
             if not cleared:
-                print("  !! Cloudflare challenge did not clear")
+                print("  !! Cloudflare challenge did not clear — if this browser is "
+                      "not visible on screen, that is why. Re-run without "
+                      "GEMRATE_HEADLESS set.")
             print(f"  status: {resp.status if resp else '?'}")
             print(f"  final url: {page.url}")
             print(f"  title: {page.title()!r}")
