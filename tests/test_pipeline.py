@@ -330,9 +330,13 @@ class TestCache(unittest.TestCase):
     def test_successful_lookup_round_trips(self):
         from scraper import cache as C
         cache = {}
+        trend = {"older_median": 500.0, "recent_median": 480.0,
+                 "older_n": 6, "recent_n": 3, "change_pct": -4.0}
         m = self._card()
         m.update({"p10_median": 500.0, "p10_sales": 8, "p10_spread": 0.3,
-                  "p9_median": 120.0, "p9_sales": 9, "p9_spread": 0.2})
+                  "p10_trend": trend,
+                  "p9_median": 120.0, "p9_sales": 9, "p9_spread": 0.2,
+                  "p9_trend": dict(trend)})
         self.assertTrue(C.put(cache, m))
         fresh = self._card()
         self.assertTrue(C.get(cache, fresh, 7))
@@ -517,3 +521,33 @@ class TestPredictionBand(unittest.TestCase):
         model = fit_cohort(cards)
         self.assertEqual(model["kind"], "flat",
                          "a cohort this small must not pretend to a fitted curve")
+
+
+class TestCacheKeepsTrends(unittest.TestCase):
+    """The ranking reads the trend fields. Leaving them out of the cache meant
+    a cached card returned with prices, no history, and no way to rank — a run
+    reporting 53 cards priced and 0 ranked."""
+
+    def _card(self):
+        return {"year": "1996", "set": "Skybox Premium", "card": "Kobe Bryant",
+                "number": "55", "parallel": "Base"}
+
+    def test_trend_survives_a_round_trip(self):
+        from scraper import cache as C
+        trend = {"older_median": 600.0, "recent_median": 430.0,
+                 "older_n": 6, "recent_n": 3, "change_pct": -28.3}
+        m = self._card()
+        m.update({"p10_median": 430.0, "p10_sales": 9, "p10_trend": trend,
+                  "p9_median": 197.0, "p9_sales": 12, "p9_trend": dict(trend, change_pct=1.0)})
+        cache = {}
+        self.assertTrue(C.put(cache, m))
+        back = self._card()
+        self.assertTrue(C.get(cache, back, 7))
+        self.assertEqual(back["p10_trend"]["change_pct"], -28.3)
+
+    def test_entry_without_a_trend_is_not_reused(self):
+        from scraper import cache as C
+        m = self._card()
+        m.update({"p10_median": 430.0, "p9_median": 197.0})   # priced, no history
+        cache = {}
+        self.assertFalse(C.put(cache, m))

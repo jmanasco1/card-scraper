@@ -13,14 +13,17 @@ from pathlib import Path
 
 CACHE_PATH = Path(__file__).resolve().parent.parent / "results" / ".price_cache.json"
 
-_FIELDS = ("p10_median", "p10_sales", "p10_spread", "p10_low", "p10_high",
-           "p9_median", "p9_sales", "p9_spread", "p9_low", "p9_high")
+# The trend fields must be here. They are what the ranking actually reads, so
+# omitting them meant a cached card came back with prices, no price history,
+# and no way to rank — a run that looked priced and scored nothing.
+_FIELDS = ("p10_median", "p10_sales", "p10_spread", "p10_low", "p10_high", "p10_trend",
+           "p9_median", "p9_sales", "p9_spread", "p9_low", "p9_high", "p9_trend")
 
 # Bumped whenever a change to comp matching invalidates prices collected under
 # the old rules. Entries from an older version are ignored rather than reused,
 # so a fix to what counts as a comp actually takes effect instead of being
 # masked by cached results gathered before it.
-VERSION = 6
+VERSION = 7
 
 
 def card_key(m):
@@ -39,7 +42,7 @@ def save(cache):
     CACHE_PATH.write_text(json.dumps(cache, indent=1))
 
 
-def usable(entry):
+def usable(entry):  # noqa: D401
     """A cache entry is only worth reusing if it actually holds prices.
 
     Failed lookups must never satisfy a later run: caching "no prices found"
@@ -47,7 +50,8 @@ def usable(entry):
     for the length of the TTL would replay that failure without touching eBay
     again. Retrying is cheap; a silently poisoned cache is not.
     """
-    return bool(entry.get("p10_median")) and bool(entry.get("p9_median"))
+    return (bool(entry.get("p10_median")) and bool(entry.get("p9_median"))
+            and bool(entry.get("p10_trend")) and bool(entry.get("p9_trend")))
 
 
 def get(cache, m, ttl_days):
