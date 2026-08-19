@@ -274,8 +274,7 @@ TEMPLATE = """<!doctype html>
   <div class="fit">Fitted premium curve: {fit}</div>
 
   <div class="lede">
-    Read one row like this: <b>the PSA 10 currently sells for</b> the first
-Every number here is <b>an actual sale price</b>. Each grade shows what the
+    Every number here is <b>an actual sale price</b>. Each grade shows what the
     card used to sell for, what it sells for now, and how many sales each side
     of that is based on. The last column is the difference between the two
     moves: a card whose PSA 10 has fallen while its own PSA 9 held steady is

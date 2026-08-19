@@ -140,6 +140,11 @@ def diagnose(stats, priced_ok):
                 "That usually means eBay changed its result markup, or the searches "
                 "genuinely have no sold results. Re-run with --debug to see the pages."
                 ).format(n=stats["no_listings"])
+    if stats.get("priced_ok_but_no_trend"):
+        return ("Prices came back fine, but not enough sales per card to measure a "
+                "trend: each grade needs at least 6 usable sales and these had "
+                "fewer. Raise --limit so more cards are tried, or loosen the "
+                "population band in config.json toward more heavily-traded cards.")
     if stats.get("all_filtered"):
         return ("eBay showed {seen} listings but every one was rejected as not matching "
                 "the card ({n} lookups). The title filter is likely too strict for these "
@@ -230,6 +235,9 @@ def main():
             print(f"  slope {model['slope']:.2f} — "
                   f"{'scarcer 10s do command higher premiums in this pool' if model['slope'] > 0.15 else 'this pool barely prices scarcity at all, treat results as weak'}")
         dated = sum(1 for m in targets if m.get("p10_trend") and m.get("p9_trend"))
+        priced = sum(1 for m in targets if m.get("p10_median") and m.get("p9_median"))
+        if priced and not dated:
+            lookup_stats["priced_ok_but_no_trend"] = priced
         print(f"{dated} of {len(targets)} cards had enough dated sales at both "
               f"grades to measure a trend; {len(ranked)} show a dislocation.")
 

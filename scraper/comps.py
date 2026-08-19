@@ -464,8 +464,16 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
         return None
 
     core = _trimmed(prices)
-    keep = set(core)
-    dated = sorted(((d, p) for p, d in sales if d and p in keep), key=lambda x: x[0])
+    keep = list(core)
+    # The search is sorted by most-recently-ended first (_sop=13 in the URL),
+    # so position in the results *is* time order. Relying on parsed dates
+    # instead made the whole signal hostage to one regex against markup that
+    # may not carry a date at all; ordering is structural and always present.
+    ordered = []
+    for price, _d in sales:                     # newest first, as returned
+        if price in keep:
+            keep.remove(price)
+            ordered.append(price)
     median = statistics.median(core)
     # Dispersion relative to the median: high values mean the "comps" are
     # probably a mix of different cards, so the model discounts them.
@@ -478,26 +486,27 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
         "spread": round(spread, 2),
         "low": round(min(core), 2),
         "high": round(max(core), 2),
-        "trend": _trend(dated),
+        "trend": _trend(ordered),
+        "dates_seen": sum(1 for _, d in sales if d),
     }
 
 
-def _trend(dated):
-    """How this card's own price has moved, comparing its most recent sales to
-    its earlier ones.
+def _trend(ordered):
+    """How this card's own price has moved, newest sales versus earlier ones.
 
-    This is a within-card comparison, which is the point. Estimating what a
-    card *should* cost from other cards requires modelling why one card's PSA
-    10 commands 3x its 9 while another's commands 15x, and that variation is
-    driven by things no available field captures. Comparing a card to its own
-    recent history assumes nothing: the player, the set, the era and the
-    collector base are all held fixed because it is the same card.
+    `ordered` is newest-first, which is how eBay returns the search. This is a
+    within-card comparison, which is the point: estimating what a card *should*
+    cost from other cards means modelling why one card's PSA 10 commands 3x its
+    9 while another's commands 15x, and that variation is driven by things no
+    available field captures. A card measured against its own recent history
+    assumes none of it — player, set, era and collector base are all held fixed
+    because it is the same card.
     """
-    if len(dated) < 6:
+    if len(ordered) < 6:
         return None
-    cut = max(2, len(dated) // 3)
-    older = [p for _, p in dated[:-cut]]
-    recent = [p for _, p in dated[-cut:]]
+    cut = max(2, len(ordered) // 3)
+    recent = ordered[:cut]           # newest
+    older = ordered[cut:]            # everything before
     if not older or not recent:
         return None
     old_med, new_med = statistics.median(older), statistics.median(recent)
@@ -509,8 +518,6 @@ def _trend(dated):
         "recent_n": len(recent),
         "older_n": len(older),
         "change_pct": round(100.0 * (new_med - old_med) / old_med, 1),
-        "first": dated[0][0].isoformat(),
-        "last": dated[-1][0].isoformat(),
     }
 
 
