@@ -41,7 +41,29 @@ source "$VENV/bin/activate"
 
 say "Installing Python packages (one time, ~30s)..."
 pip install --quiet --upgrade pip
-pip install --quiet -r requirements.txt
+if ! pip install --quiet -r requirements.txt; then
+  cat <<MSG
+
+Installing dependencies failed.
+
+If the output above mentions compiling C code (greenlet, cffi, "failed building
+wheel"), pip could not find a prebuilt package for Python $PYV and tried to
+build one from source. requirements.txt uses version ranges specifically so pip
+can pick a build that matches your Python, so first make sure you are on the
+latest code:
+
+    git pull
+
+If it still fails, Python $PYV may be too new for these packages. Installing
+Python 3.12 alongside it and re-running usually clears it:
+
+    brew install python@3.12
+    rm -rf $VENV
+    ./run.sh
+
+MSG
+  exit 1
+fi
 
 # The scraper prefers real Google Chrome, because it clears Cloudflare's bot
 # check far more reliably than Playwright's bundled Chromium. If Chrome is

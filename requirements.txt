@@ -1,2 +1,12 @@
-playwright==1.45.0
-curl_cffi==0.7.1
+# Keep these as ranges, not exact pins.
+#
+# playwright==1.45.0 pinned greenlet==3.0.3, which publishes no wheel for
+# Python 3.13. pip therefore tried to compile greenlet from source, and 3.0.3
+# does not build against 3.13's changed C API — the install died on
+# "cannot initialize object parameter of type 'greenlet::Greenlet'".
+#
+# playwright >= 1.50 requires greenlet >= 3.1.1, which ships cp313 universal2
+# wheels covering both Intel and Apple Silicon Macs. Re-pinning either package
+# to an exact old version will break Python 3.13 again.
+playwright>=1.50,<2
+curl_cffi>=0.7.1,<1.0
