@@ -3,3 +3,6 @@ __pycache__/
 
 # eBay price cache (local, regenerated per run)
 results/.price_cache.json
+
+# local virtualenv created by run.sh
+.venv/

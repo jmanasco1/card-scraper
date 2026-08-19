@@ -104,7 +104,18 @@ def main():
     lookup_limit = args.limit or limits.get("max_price_lookups", 40)
 
     print(f"=== GemRate value scan: {sport} ({grader.upper()}) ===")
-    client = GemRateClient(delay_seconds=limits["request_delay_seconds"], debug=args.debug)
+    try:
+        client = GemRateClient(delay_seconds=limits["request_delay_seconds"], debug=args.debug)
+    except Exception as e:
+        sys.exit(
+            f"Could not start a browser: {e}\n\n"
+            "The scan drives a real, visible browser — headless mode is the "
+            "clearest signal\nCloudflare's bot check looks for, and eBay "
+            "captchas need a window you can see.\n\n"
+            "Fix: install Google Chrome from https://www.google.com/chrome/ "
+            "and re-run.\nIf Chrome is already installed, run "
+            "`playwright install chrome` in this folder."
+        )
 
     try:
         cards, uni_report = build_universe(client, cfg, category, grader, args.universe, args.debug)

@@ -68,6 +68,17 @@ judged against.
 datacenter IPs from gemrate.com, and eBay serves captchas to automation that a
 human has to clear. Both are fine on a home connection with a visible browser.
 
+On macOS or Linux, `run.sh` does the whole setup and then runs the scan:
+
+```bash
+./run.sh                      # basketball, prices 40 cards
+./run.sh --limit 10           # quick trial run
+./run.sh --sport baseball
+```
+
+It creates a virtualenv, installs dependencies, and reuses Google Chrome if you
+already have it. To drive it by hand instead:
+
 ```bash
 pip install -r requirements.txt
 playwright install chrome
