@@ -76,7 +76,17 @@ def build_ebay_url(metrics, grade=10):
 
 
 def title_matches(title, metrics, grade, require_number=True):
-    """Does this listing actually price the card and grade we asked for?
+    """True when the listing prices the card and grade we asked for."""
+    return reject_reason(title, metrics, grade, require_number) is None
+
+
+def reject_reason(title, metrics, grade, require_number=True):
+    """Why this listing isn't a comp, or None if it is.
+
+    Returning the reason rather than a bare boolean is what makes a bad run
+    diagnosable: when every listing is discarded, the question is always which
+    rule did the discarding, and guessing at that from the outside has proven
+    expensive.
 
     `require_number` is relaxed on a second pass. Plenty of honest listings omit
     the card number ("1986 Fleer Michael Jordan Rookie PSA 10"), and on a
@@ -86,21 +96,22 @@ def title_matches(title, metrics, grade, require_number=True):
     """
     t = _norm(title)
 
-    if any(j in t for j in _JUNK):
-        return False
+    for j in _JUNK:
+        if j in t:
+            return f"junk term {j!r}"
 
     want = f"psa {grade}"
     if want not in t:
-        return False
+        return f"no {want!r} in title"
     # Reject titles carrying a different grade too ("PSA 9 and PSA 10 lot",
     # "upgrade from PSA 9"). Exactly one grade token may appear.
     present = {g for g in _ALL_GRADES if g in t}
     # "psa 10" contains no other token, but "psa 9" is a substring of nothing
     # here since we normalized spacing; guard the 9/9.5 overlap explicitly.
     if want == "psa 9" and "psa 9.5" in t:
-        return False
+        return "is a PSA 9.5"
     if present != {want}:
-        return False
+        return f"carries other grades {sorted(present - {want})}"
 
     # --- the player has to actually be on the card -------------------------
     #
@@ -113,17 +124,17 @@ def title_matches(title, metrics, grade, require_number=True):
     if name_tokens:
         surname = name_tokens[-1]
         if surname not in t:
-            return False
+            return f"surname {surname!r} absent"
         # A surname alone is too weak (Jordan, Johnson, Smith recur constantly),
         # so for a normal "First Last" name demand another token too.
         if len(name_tokens) > 1 and not any(w in t for w in name_tokens[:-1]):
-            return False
+            return f"only surname matched, missing {name_tokens[:-1]}"
 
     # --- and it has to be from the right set -------------------------------
     set_tokens = [w for w in re.findall(r"[a-z]+", (metrics.get("set") or "").lower())
                   if len(w) > 2 and w not in _SET_STOPWORDS]
     if set_tokens and not any(w in t for w in set_tokens):
-        return False
+        return f"set tokens {set_tokens} absent"
 
     year = str(metrics.get("year", "") or "").strip()
     if year and year.isdigit():
@@ -131,20 +142,20 @@ def title_matches(title, metrics, grade, require_number=True):
         short = year[2:]
         nxt = str(int(year) + 1)[2:]
         if not re.search(rf"\b{year}\b", t) and f"{year}-{nxt}" not in t and f"{short}-{nxt}" not in t:
-            return False
+            return f"year {year} absent"
 
     num = str(metrics.get("number", "") or "").strip()
     if require_number and num:
         if not re.search(rf"(#\s*{re.escape(num)}\b|\bno\.?\s*{re.escape(num)}\b)", t):
-            return False
+            return f"card number #{num} absent"
     elif num:
         # Relaxed pass: a *different* explicit number is still disqualifying,
         # we just no longer insist one be present.
         m = re.search(r"#\s*(\w+)\b", t)
         if m and m.group(1).lower() != num.lower():
-            return False
+            return f"different card number #{m.group(1)}"
 
-    return True
+    return None
 
 
 def _looks_like_captcha(page):
@@ -304,6 +315,29 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
 
     items = _scrape_listings(page)
 
+    # Save one raw results page. The padding cutoff depends on eBay's markup,
+    # which changes and cannot be verified without seeing it.
+    if not stats.get("saved_html"):
+        try:
+            from pathlib import Path
+            out = Path(__file__).resolve().parent.parent / "results" / "ebay_page_sample.html"
+            out.parent.mkdir(exist_ok=True)
+            out.write_text(page.content())
+            stats["saved_html"] = True
+        except Exception:
+            pass
+
+    audit = stats.setdefault("audit", [])
+    entry = {
+        "query": query,
+        "grade": grade,
+        "listings": len(items),
+        "titles": [it.get("title", "")[:110] for it in items[:25]],
+        "rejects": [],
+        "kept": [],
+    }
+    audit.append(entry)
+
     def harvest(strict):
         out = []
         for it in items:
@@ -324,6 +358,17 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
         relaxed = harvest(strict=False)
         if len(relaxed) > len(prices):
             prices, matching = relaxed, "relaxed"
+
+    entry["matching"] = matching
+    for it in items[:25]:
+        why = reject_reason(it.get("title", ""), metrics, grade,
+                            require_number=(matching == "strict"))
+        line = f"{it.get('price','?')[:14]:>14}  {it.get('title','')[:96]}"
+        if why:
+            entry["rejects"].append(f"{line}   << {why}")
+        else:
+            entry["kept"].append(line)
+    entry["prices"] = sorted(prices)
 
     stats.setdefault("listings_seen", 0)
     stats["listings_seen"] += len(items)

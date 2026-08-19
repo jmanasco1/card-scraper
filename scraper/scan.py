@@ -82,7 +82,42 @@ def price_candidates(client, targets, cfg, debug, fresh=False):
     if hits:
         print(f"  ({hits} of {len(targets)} came from cache — delete "
               f"results/.price_cache.json to force a refresh)")
+
+    write_audit(stats)
     return stats
+
+
+def write_audit(stats):
+    """Dump exactly what eBay returned, per search.
+
+    When prices come back wrong the question is always the same — what did the
+    page actually contain, and which rule threw it away — and that cannot be
+    answered from the outside. This writes it to one small file that can be
+    read or sent on directly.
+    """
+    audit = stats.get("audit")
+    if not audit:
+        return
+    RESULTS.mkdir(exist_ok=True)
+    out = ["eBay comp audit", "=" * 78,
+           "Each block is one search. 'kept' lines became comps; 'rejected' lines",
+           "show which rule discarded them. Padding that eBay appends to a thin",
+           "result set should not appear at all.", ""]
+    for e in audit:
+        out.append("=" * 78)
+        out.append(f"QUERY: {e['query']}   (PSA {e['grade']})")
+        out.append(f"  listings captured: {e['listings']}   matching: {e.get('matching','?')}")
+        out.append(f"  prices used: {e.get('prices') or 'none'}")
+        if e["kept"]:
+            out.append(f"  --- kept ({len(e['kept'])}) ---")
+            out.extend("    " + k for k in e["kept"][:12])
+        if e["rejects"]:
+            out.append(f"  --- rejected ({len(e['rejects'])}) ---")
+            out.extend("    " + r for r in e["rejects"][:15])
+        out.append("")
+    path = RESULTS / "comp_audit.txt"
+    path.write_text("\n".join(out))
+    print(f"\nWrote {path} — send this if the prices look wrong.")
 
 
 def diagnose(stats, priced_ok):
