@@ -29,7 +29,7 @@ def _conf_label(c):
     return "thin", "Few comps — treat this discount as unproven"
 
 
-def render(sport, ranked, model, stats, uni_report, sample=False):
+def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
     stamp = date.today().isoformat()
     rows = []
 
@@ -99,11 +99,12 @@ def render(sport, ranked, model, stats, uni_report, sample=False):
       mispricing is least likely. The long tail wasn't reached.
     </div>"""
     if not ranked:
-        warn += """
+        detail = html.escape(problem) if problem else (
+            "No card got usable sold prices at both PSA 9 and PSA 10, so nothing "
+            "could be compared.")
+        warn += f"""
     <div class="warn">
-      <strong>Nothing scoreable.</strong> No card got usable sold prices at both
-      PSA 9 and PSA 10, so nothing could be compared. Usually this means eBay
-      captchas blocked the lookups — re-run and solve them when prompted.
+      <strong>Nothing scoreable.</strong> {detail}
     </div>"""
 
     meta = ""
@@ -126,6 +127,9 @@ def render(sport, ranked, model, stats, uni_report, sample=False):
         warn=warn,
         rows="".join(rows),
         count=len(ranked),
+        empty=("" if ranked else
+               '<div class="empty">No cards could be scored this run — '
+               'see the note above.</div>'),
         json_blob=html.escape(json.dumps({"date": stamp, "sport": sport, "sample": sample})),
     )
 
@@ -262,6 +266,7 @@ TEMPLATE = """<!doctype html>
     </tr></thead>
     <tbody>{rows}</tbody>
   </table>
+  {empty}
   </div>
 
   <footer>

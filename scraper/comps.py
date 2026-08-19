@@ -71,8 +71,15 @@ def build_ebay_url(metrics, grade=10):
     return EBAY_SOLD.format(q=quote_plus(build_query(metrics, grade)))
 
 
-def title_matches(title, metrics, grade):
-    """Does this listing actually price the card and grade we asked for?"""
+def title_matches(title, metrics, grade, require_number=True):
+    """Does this listing actually price the card and grade we asked for?
+
+    `require_number` is relaxed on a second pass. Plenty of honest listings omit
+    the card number ("1986 Fleer Michael Jordan Rookie PSA 10"), and on a
+    single-card search the year plus the set in the query already pin it down
+    well enough that demanding "#57" in the title throws away most of the real
+    comps.
+    """
     t = _norm(title)
 
     if any(j in t for j in _JUNK):
@@ -100,8 +107,14 @@ def title_matches(title, metrics, grade):
             return False
 
     num = str(metrics.get("number", "") or "").strip()
-    if num:
+    if require_number and num:
         if not re.search(rf"(#\s*{re.escape(num)}\b|\bno\.?\s*{re.escape(num)}\b)", t):
+            return False
+    elif num:
+        # Relaxed pass: a *different* explicit number is still disqualifying,
+        # we just no longer insist one be present.
+        m = re.search(r"#\s*(\w+)\b", t)
+        if m and m.group(1).lower() != num.lower():
             return False
 
     return True
@@ -174,40 +187,67 @@ def _trimmed(prices, trim=0.15):
     return s[k:-k] or s
 
 
-def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=True):
+def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=True, stats=None):
     """Price one card at one grade.
 
     Returns {'median','sales','spread','low','high'} or None if there weren't
     enough clean matching sales to be worth a number.
     """
+    if stats is None:
+        stats = {}
     query = build_query(metrics, grade)
     url = EBAY_SOLD.format(q=quote_plus(query))
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=45000)
     except Exception as e:
+        stats["nav_failed"] = stats.get("nav_failed", 0) + 1
         if debug:
             print(f"    [debug] eBay goto failed for {query!r}: {e}")
         return None
 
     time.sleep(delay)
+    if _looks_like_captcha(page):
+        stats["captcha"] = stats.get("captcha", 0) + 1
     if not _wait_out_captcha(page, query, interactive, debug):
+        stats["captcha_blocked"] = stats.get("captcha_blocked", 0) + 1
         return None
 
     items = _scrape_listings(page)
-    prices = []
-    for it in items:
-        if not title_matches(it.get("title", ""), metrics, grade):
-            continue
-        pm = _PRICE_RE.search(it.get("price", "")) or _PRICE_RE.search(it.get("text", ""))
-        if not pm:
-            continue
-        try:
-            prices.append(float(pm.group(1).replace(",", "")))
-        except ValueError:
-            continue
+
+    def harvest(strict):
+        out = []
+        for it in items:
+            if not title_matches(it.get("title", ""), metrics, grade, require_number=strict):
+                continue
+            pm = _PRICE_RE.search(it.get("price", "")) or _PRICE_RE.search(it.get("text", ""))
+            if not pm:
+                continue
+            try:
+                out.append(float(pm.group(1).replace(",", "")))
+            except ValueError:
+                continue
+        return out
+
+    prices = harvest(strict=True)
+    matching = "strict"
+    if len(prices) < 3:
+        relaxed = harvest(strict=False)
+        if len(relaxed) > len(prices):
+            prices, matching = relaxed, "relaxed"
+
+    stats.setdefault("listings_seen", 0)
+    stats["listings_seen"] += len(items)
+    if items and not prices:
+        stats["all_filtered"] = stats.get("all_filtered", 0) + 1
+    if not items:
+        stats["no_listings"] = stats.get("no_listings", 0) + 1
 
     if debug:
-        print(f"    [debug] PSA {grade} {query!r}: {len(items)} listings, {len(prices)} clean comps")
+        print(f"    [debug] PSA {grade}: {len(items)} listings on page, "
+              f"{len(prices)} usable ({matching} matching) — {query!r}")
+        if items and not prices:
+            for it in items[:3]:
+                print(f"        rejected: {it.get('title','')[:88]!r}")
 
     if not prices:
         return None
@@ -228,11 +268,18 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
     }
 
 
-def price_card(page, metrics, delay=1.5, debug=False, interactive=True):
+def price_card(page, metrics, delay=1.5, debug=False, interactive=True, stats=None):
     """Price a card at PSA 10 and PSA 9 and write the fields the value model
-    reads. Returns True if both grades produced a price."""
-    ten = fetch_grade_comps(page, metrics, 10, delay, debug, interactive)
-    nine = fetch_grade_comps(page, metrics, 9, delay, debug, interactive)
+    reads. Returns True if both grades produced a price.
+
+    `stats` accumulates why lookups fail across the whole run, so a scan that
+    scores nothing can say which stage broke instead of just coming up empty.
+    """
+    if stats is None:
+        stats = {}
+    ten = fetch_grade_comps(page, metrics, 10, delay, debug, interactive, stats)
+    nine = fetch_grade_comps(page, metrics, 9, delay, debug, interactive, stats)
+    stats["attempted"] = stats.get("attempted", 0) + 1
 
     for prefix, res in (("p10", ten), ("p9", nine)):
         metrics[f"{prefix}_median"] = res["median"] if res else None

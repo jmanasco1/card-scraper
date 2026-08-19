@@ -237,3 +237,49 @@ class TestCompHygiene(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestDiagnostics(unittest.TestCase):
+    """A run that scores nothing must say which stage broke. The first real
+    run produced an empty report whose only explanation was a guess about
+    captchas; these lock in that each failure mode names itself."""
+
+    def test_each_failure_mode_is_named(self):
+        from scraper.scan import diagnose
+        self.assertIn("captcha", diagnose({"attempted": 5, "captcha_blocked": 7}, False))
+        self.assertIn("markup", diagnose({"attempted": 5, "no_listings": 10,
+                                          "listings_seen": 0}, False))
+        self.assertIn("too strict", diagnose({"attempted": 5, "listings_seen": 200,
+                                              "all_filtered": 9}, False))
+        self.assertIn("network", diagnose({"attempted": 5, "nav_failed": 4}, False))
+
+    def test_silent_when_pricing_worked(self):
+        from scraper.scan import diagnose
+        self.assertIsNone(diagnose({"attempted": 40}, True))
+        self.assertIsNone(diagnose({}, False))
+
+
+class TestRelaxedMatching(unittest.TestCase):
+    """Requiring the card number in the title threw away honest listings that
+    simply omit it, which is a prime suspect for a run that priced nothing."""
+
+    CARD = {"year": "1986", "set": "Fleer", "card": "Michael Jordan",
+            "number": "57", "parallel": "Base"}
+
+    def test_strict_pass_requires_the_number(self):
+        t = "1986 Fleer Michael Jordan Rookie RC PSA 10"
+        self.assertFalse(comps.title_matches(t, self.CARD, 10, require_number=True))
+
+    def test_relaxed_pass_accepts_a_missing_number(self):
+        t = "1986 Fleer Michael Jordan Rookie RC PSA 10"
+        self.assertTrue(comps.title_matches(t, self.CARD, 10, require_number=False))
+
+    def test_relaxed_pass_still_rejects_a_different_number(self):
+        t = "1986 Fleer Michael Jordan #99 PSA 10"
+        self.assertFalse(comps.title_matches(t, self.CARD, 10, require_number=False))
+
+    def test_relaxed_pass_still_enforces_grade_and_year(self):
+        self.assertFalse(comps.title_matches(
+            "1986 Fleer Michael Jordan Rookie PSA 9", self.CARD, 10, require_number=False))
+        self.assertFalse(comps.title_matches(
+            "1992 Fleer Michael Jordan Rookie PSA 10", self.CARD, 10, require_number=False))

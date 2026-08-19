@@ -56,6 +56,7 @@ def price_candidates(client, targets, cfg, debug):
     ttl = limits.get("cache_ttl_days", 7)
     cache = cache_mod.load()
     hits = 0
+    stats = {}
 
     print(f"\nPricing {len(targets)} cards on eBay (PSA 10 + PSA 9).")
     print("Solve any captcha in the browser window when prompted — the run waits for you.\n")
@@ -71,6 +72,7 @@ def price_candidates(client, targets, cfg, debug):
         comps_mod.price_card(
             client.page, m,
             delay=limits["request_delay_seconds"], debug=debug, interactive=True,
+            stats=stats,
         )
         cache_mod.put(cache, m)
         cache_mod.save(cache)
@@ -80,6 +82,35 @@ def price_candidates(client, targets, cfg, debug):
     if hits:
         print(f"  ({hits} of {len(targets)} came from cache — delete "
               f"results/.price_cache.json to force a refresh)")
+    return stats
+
+
+def diagnose(stats, priced_ok):
+    """Turn the lookup counters into one sentence naming what went wrong.
+    Returns None when pricing broadly worked."""
+    attempted = stats.get("attempted", 0)
+    if not attempted or priced_ok:
+        return None
+    if stats.get("captcha_blocked"):
+        return ("eBay served a captcha on {n} of {a} lookups and it was never cleared, "
+                "so no prices came back. Re-run and solve the captcha in the browser "
+                "window when it appears — the scan waits for you."
+                ).format(n=stats["captcha_blocked"], a=attempted * 2)
+    if stats.get("no_listings") and not stats.get("listings_seen"):
+        return ("eBay returned pages with no recognisable listings on them ({n} lookups). "
+                "That usually means eBay changed its result markup, or the searches "
+                "genuinely have no sold results. Re-run with --debug to see the pages."
+                ).format(n=stats["no_listings"])
+    if stats.get("all_filtered"):
+        return ("eBay showed {seen} listings but every one was rejected as not matching "
+                "the card ({n} lookups). The title filter is likely too strict for these "
+                "cards — re-run with --debug to see which titles were thrown out."
+                ).format(seen=stats.get("listings_seen", 0), n=stats["all_filtered"])
+    if stats.get("nav_failed"):
+        return ("Could not load eBay for {n} lookups — a network problem rather than a "
+                "scraping one.").format(n=stats["nav_failed"])
+    return ("Prices came back empty and the cause is not obvious. Re-run with --debug "
+            "and check the per-card lines.")
 
 
 def main():
@@ -141,7 +172,7 @@ def main():
             m["ebay_url_10"] = comps_mod.build_ebay_url(m, 10)
             m["ebay_url_9"] = comps_mod.build_ebay_url(m, 9)
 
-        price_candidates(client, targets, cfg, args.debug)
+        lookup_stats = price_candidates(client, targets, cfg, args.debug)
 
         model = fit_cohort(targets)
         for m in targets:
@@ -157,7 +188,12 @@ def main():
                   f"{'scarcer 10s do command higher premiums in this pool' if model['slope'] > 0.15 else 'this pool barely prices scarcity at all, treat results as weak'}")
         print(f"{len(ranked)} cards scoreable with comps at both grades.")
 
-        write_outputs(sport, ranked[: limits["max_results"]], model, stats, uni_report)
+        problem = diagnose(lookup_stats, bool(ranked))
+        if problem:
+            print(f"\n!! {problem}")
+
+        write_outputs(sport, ranked[: limits["max_results"]], model, stats, uni_report,
+                      problem=problem)
         print(f"\nDone. Open the report:  results/report_{sport}.html")
     finally:
         client.close()
@@ -172,7 +208,7 @@ FIELDS = [
 ]
 
 
-def write_outputs(sport, ranked, model, stats, uni_report):
+def write_outputs(sport, ranked, model, stats, uni_report, problem=None):
     RESULTS.mkdir(exist_ok=True)
     stamp = date.today().isoformat()
 
@@ -187,7 +223,7 @@ def write_outputs(sport, ranked, model, stats, uni_report):
     # The page people actually read. Written first so that even if a later
     # writer trips, the human-facing output exists.
     (RESULTS / f"report_{sport}.html").write_text(
-        report_mod.render(sport, ranked, model, stats, uni_report)
+        report_mod.render(sport, ranked, model, stats, uni_report, problem=problem)
     )
 
     with open(RESULTS / f"latest_{sport}.csv", "w", newline="") as f:
