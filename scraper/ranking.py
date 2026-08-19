@@ -68,12 +68,23 @@ def select_for_pricing(candidates, limit):
     ordered = sorted(candidates, key=lambda m: m["gem_rate_pct"])
     picked = []
     n = len(ordered)
+
+    def year_of(m):
+        y = str(m.get("year") or "")
+        return int(y) if y.isdigit() else 0
+
     for i in range(limit):
         lo = (i * n) // limit
         hi = max(lo + 1, ((i + 1) * n) // limit)
         bucket = ordered[lo:hi]
-        bucket.sort(key=lambda m: m["total_pop"])
-        picked.append(bucket[len(bucket) // 2])
+        # Within each scarcity bucket, prefer the newest card. The scoring needs
+        # a raw (ungraded) sale price, and thirty-year-old cards are almost all
+        # slabbed already — nobody sells them raw, so those lookups come back
+        # empty and the card is unscoreable however good it looks. Modern cards
+        # trade raw constantly, which is also where buying-to-grade is a live
+        # decision rather than a historical one.
+        bucket.sort(key=year_of, reverse=True)
+        picked.append(bucket[0])
     return picked
 
 
