@@ -51,7 +51,8 @@ def _conf_label(c):
     return "thin", "Few comps — treat this discount as unproven"
 
 
-def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
+def render(sport, ranked, model, stats, uni_report, sample=False, problem=None,
+           findings=0):
     stamp = date.today().isoformat()
     rows = []
 
@@ -71,7 +72,7 @@ def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
       <tr data-score="{r.get('score') or 0}" data-disc="{disc}" data-conf="{conf}"
           data-pop="{r.get('total_pop') or 0}" data-gem="{r.get('gem_rate_pct') or 0}"
           data-p10="{r.get('p10_median') or 0}" data-fair="{r.get('headroom_usd') or 0}">
-        <td class="rank">{i}</td>
+        <td class="rank">{'★' if r.get('is_finding') else i}</td>
         <td class="card">
           <div class="cname">{name} <span class="num">#{num}</span></div>
           <div class="cset">{setname}</div>
@@ -129,6 +130,14 @@ def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
       <strong>Universe capped.</strong> GemRate ignored the per-year request, so
       this pool is only the all-time most-graded cards — the famous ones, where
       mispricing is least likely. The long tail wasn't reached.
+    </div>"""
+    if ranked and not findings:
+        warn += """
+    <div class="warn">
+      <strong>No dislocations, but the prices below are real.</strong> None of
+      these cards had its PSA 10 fall far enough against its own PSA 9 to count
+      as a finding. Every row is still an actual sold price with an actual
+      sales count — sort by <em>10 vs its 9</em> to see which came closest.
     </div>"""
     if not ranked:
         detail = html.escape(problem) if problem else (

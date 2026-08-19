@@ -29,7 +29,7 @@ from . import cache as cache_mod
 from . import comps as comps_mod
 from . import report as report_mod
 from .gemrate import GemRateClient
-from .ranking import analyze, cohort_stats, rank, select_for_pricing
+from .ranking import analyze, cohort_stats, measured, rank, select_for_pricing
 from .value import fit_cohort, score_card
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -140,6 +140,12 @@ def diagnose(stats, priced_ok):
                 "That usually means eBay changed its result markup, or the searches "
                 "genuinely have no sold results. Re-run with --debug to see the pages."
                 ).format(n=stats["no_listings"])
+    if stats.get("measured_but_no_dislocation"):
+        return ("Priced and measured {n} cards, but none showed a PSA 10 falling far "
+                "enough against its own PSA 9 to flag. Their prices and price history "
+                "are listed below anyway. In a pool of the most-traded cards in the "
+                "hobby that is a plausible answer, not a fault."
+                ).format(n=stats["measured_but_no_dislocation"])
     if stats.get("priced_ok_but_no_trend"):
         return ("Prices came back fine, but not enough sales per card to measure a "
                 "trend: each grade needs at least 6 usable sales and these had "
@@ -238,6 +244,8 @@ def main():
         priced = sum(1 for m in targets if m.get("p10_median") and m.get("p9_median"))
         if priced and not dated:
             lookup_stats["priced_ok_but_no_trend"] = priced
+        if dated and not ranked:
+            lookup_stats["measured_but_no_dislocation"] = dated
         print(f"{dated} of {len(targets)} cards had enough dated sales at both "
               f"grades to measure a trend; {len(ranked)} show a dislocation.")
 
@@ -245,8 +253,10 @@ def main():
         if problem:
             print(f"\n!! {problem}")
 
-        write_outputs(sport, ranked[: limits["max_results"]], model, stats, uni_report,
-                      problem=problem)
+        # Show every card we priced, not only the ones clearing the threshold.
+        shown = measured(targets, filters["min_sales_per_grade"])
+        write_outputs(sport, shown[: limits["max_results"]], model, stats, uni_report,
+                      problem=problem, findings=len(ranked))
         print(f"\nDone. Open the report:  results/report_{sport}.html")
     finally:
         client.close()
@@ -261,7 +271,7 @@ FIELDS = [
 ]
 
 
-def write_outputs(sport, ranked, model, stats, uni_report, problem=None):
+def write_outputs(sport, ranked, model, stats, uni_report, problem=None, findings=0):
     RESULTS.mkdir(exist_ok=True)
     stamp = date.today().isoformat()
 
@@ -276,7 +286,8 @@ def write_outputs(sport, ranked, model, stats, uni_report, problem=None):
     # The page people actually read. Written first so that even if a later
     # writer trips, the human-facing output exists.
     (RESULTS / f"report_{sport}.html").write_text(
-        report_mod.render(sport, ranked, model, stats, uni_report, problem=problem)
+        report_mod.render(sport, ranked, model, stats, uni_report, problem=problem,
+                          findings=findings)
     )
 
     with open(RESULTS / f"latest_{sport}.csv", "w", newline="") as f:

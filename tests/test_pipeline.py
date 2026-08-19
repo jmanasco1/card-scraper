@@ -551,3 +551,49 @@ class TestCacheKeepsTrends(unittest.TestCase):
         m.update({"p10_median": 430.0, "p9_median": 197.0})   # priced, no history
         cache = {}
         self.assertFalse(C.put(cache, m))
+
+
+class TestAlwaysShowMeasuredCards(unittest.TestCase):
+    """A run priced 53 cards and displayed none, because none cleared the
+    dislocation threshold. An empty page is indistinguishable from a failure
+    and discards real sale prices that were expensive to collect."""
+
+    def _cards(self, n=20, seed=3):
+        rng = random.Random(seed)
+        cards = [m for c in simulate_universe(n, seed=seed) if (m := analyze(c, FILTERS))]
+        for m in cards:
+            simulate_prices(m, rng, sales=15)
+            simulate_trend(m, p10_move=rng.uniform(-0.03, 0.03), p9_move=0.0)
+        return cards
+
+    def test_measured_lists_cards_even_with_no_findings(self):
+        from scraper.ranking import measured
+        cards = self._cards()
+        self.assertEqual(rank(cards, WEIGHTS, 3), [], "fixture should have no findings")
+        shown = measured(cards, 3)
+        self.assertEqual(len(shown), len(cards))
+        self.assertTrue(all(not m["is_finding"] for m in shown))
+
+    def test_findings_are_flagged_and_sort_first(self):
+        from scraper.ranking import measured
+        cards = self._cards()
+        hit = cards[0]
+        simulate_trend(hit, p10_move=-0.40, p9_move=0.0)
+        rank(cards, WEIGHTS, 3)                 # marks is_finding
+        shown = measured(cards, 3)
+        self.assertIs(shown[0], hit)
+        self.assertTrue(hit["is_finding"])
+
+    def test_cards_without_history_are_still_excluded(self):
+        from scraper.ranking import measured
+        cards = self._cards()
+        for m in cards:
+            m["p10_trend"] = None
+        self.assertEqual(measured(cards, 3), [])
+
+    def test_no_dislocation_is_diagnosed_as_such(self):
+        from scraper.scan import diagnose
+        msg = diagnose({"attempted": 53, "listings_seen": 7929, "all_filtered": 6,
+                        "measured_but_no_dislocation": 53}, False)
+        self.assertIn("none showed", msg)
+        self.assertNotIn("rejected", msg)

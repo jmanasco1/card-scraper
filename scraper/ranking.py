@@ -155,10 +155,38 @@ def rank(candidates, weights, min_sales, min_edge_usd=25.0, min_move_pct=15.0):
         m["drop_usd"] = round(drop_usd, 2)
         # Magnitude of the dislocation, damped by how trustworthy the comps are.
         m["score"] = round(abs(m["dislocation_pct"]) * conf, 1)
+        m["is_finding"] = True
         scored.append(m)
 
     scored.sort(key=lambda m: m["score"], reverse=True)
     return scored
+
+
+def measured(candidates, min_sales):
+    """Every card we successfully priced at both grades, with its history.
+
+    Reporting only the cards that clear the dislocation threshold means a run
+    where nothing clears it shows an empty page, which is indistinguishable
+    from a run that failed — and throws away fifty-odd cards of real, verified
+    sale prices that were expensive to collect. Findings are flagged; the rest
+    are still worth seeing.
+    """
+    from .value import confidence
+
+    out = []
+    for m in candidates:
+        if not (m.get("p10_trend") and m.get("p9_trend")):
+            continue
+        m.setdefault("confidence", confidence(m, min_sales))
+        m.setdefault("liquidity", liquidity(m))
+        if m.get("dislocation_pct") is None:
+            m["dislocation_pct"] = dislocation(m)
+        m.setdefault("is_finding", False)
+        m.setdefault("score", round(abs(m["dislocation_pct"] or 0) * (m["confidence"] or 0), 1))
+        out.append(m)
+
+    out.sort(key=lambda m: m.get("dislocation_pct") or 0)
+    return out
 
 
 def cohort_stats(candidates):
