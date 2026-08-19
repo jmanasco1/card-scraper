@@ -29,7 +29,7 @@ def _conf_label(c):
     return "thin", "Few comps — treat this discount as unproven"
 
 
-def render(sport, ranked, model, stats, uni_report):
+def render(sport, ranked, model, stats, uni_report, sample=False):
     stamp = date.today().isoformat()
     rows = []
 
@@ -48,7 +48,7 @@ def render(sport, ranked, model, stats, uni_report):
         rows.append(f"""
       <tr data-score="{r.get('score') or 0}" data-disc="{disc}" data-conf="{conf}"
           data-pop="{r.get('total_pop') or 0}" data-gem="{r.get('gem_rate_pct') or 0}"
-          data-p10="{r.get('p10_median') or 0}">
+          data-p10="{r.get('p10_median') or 0}" data-fair="{r.get('headroom_usd') or 0}">
         <td class="rank">{i}</td>
         <td class="card">
           <div class="cname">{name} <span class="num">#{num}</span></div>
@@ -57,8 +57,9 @@ def render(sport, ranked, model, stats, uni_report):
         <td class="num-col">{r.get('total_pop', 0):,}</td>
         <td class="num-col">{r.get('gem_rate_pct', 0)}%</td>
         <td class="num-col">${(r.get('p9_median') or 0):,.0f}<span class="n">{r.get('p9_sales', 0)}</span></td>
-        <td class="num-col">${(r.get('p10_median') or 0):,.0f}<span class="n">{r.get('p10_sales', 0)}</span></td>
-        <td class="num-col ratio">{r.get('gap')}×<span class="n">fair {r.get('expected_gap')}×</span></td>
+        <td class="num-col buy">${(r.get('p10_median') or 0):,.0f}<span class="n">{r.get('p10_sales', 0)}</span></td>
+        <td class="num-col worth">${(r.get('fair_p10') or 0):,.0f}<span class="head">{(r.get('headroom_usd') or 0):+,.0f}</span></td>
+        <td class="num-col ratio">{r.get('gap')}×<span class="n">vs {r.get('expected_gap')}×</span></td>
         <td class="disc {sign}">
           <div class="dval">{disc:+.0f}%</div>
           <div class="dbar"><span style="width:{_bar(disc):.1f}%"></span></div>
@@ -76,6 +77,13 @@ def render(sport, ranked, model, stats, uni_report):
     slope = model.get("slope")
 
     warn = ""
+    if sample:
+        warn += """
+    <div class="sample">
+      <strong>SAMPLE DATA — NOT REAL FINDINGS.</strong> The card names and
+      populations are real, but every price on this page is invented to
+      demonstrate the layout. Do not buy anything based on it.
+    </div>"""
     if weak:
         warn = """
     <div class="warn">
@@ -118,7 +126,7 @@ def render(sport, ranked, model, stats, uni_report):
         warn=warn,
         rows="".join(rows),
         count=len(ranked),
-        json_blob=html.escape(json.dumps({"date": stamp, "sport": sport})),
+        json_blob=html.escape(json.dumps({"date": stamp, "sport": sport, "sample": sample})),
     )
 
 
@@ -185,6 +193,13 @@ TEMPLATE = """<!doctype html>
   .num-col .n {{ display:block; color:var(--muted); font-size:11.5px; }}
   .num-col .n::before {{ content:"n="; }}
   .ratio .n::before {{ content:""; }}
+  .buy {{ font-weight:600; }}
+  .worth {{ font-weight:600; }}
+  .worth .head {{ display:block; font-size:11.5px; color:var(--cheap); font-weight:600; }}
+  .sample {{
+    background:#5b1d1d; color:#ffdede; border:1px solid #a33; border-radius:10px;
+    padding:12px 14px; margin:14px 0; font-size:13.5px; letter-spacing:.01em;
+  }}
   .disc {{ min-width:104px; }}
   .dval {{ font-variant-numeric:tabular-nums; font-weight:650; }}
   .disc.cheap .dval {{ color:var(--cheap); }}
@@ -220,11 +235,12 @@ TEMPLATE = """<!doctype html>
   <div class="fit">Fitted premium curve: {fit}</div>
 
   <div class="lede">
-    Every card here is priced against <b>what this run's own cards charge for
-    scarcity</b>. <b>Gap</b> is the real PSA&nbsp;10 ÷ PSA&nbsp;9 price ratio;
-    <b>fair</b> is what a card gemming at that rate normally commands. A green
-    discount means the 10 is <b>cheap for how hard it is to pull</b> — that's the
-    finding. Click any column to re-sort.
+    Read one row like this: <b>the PSA 10 currently sells for</b> the first
+    dollar figure, and <b>the model thinks it should sell for</b> the second,
+    based on what every other card in this run charges for being equally hard to
+    gem. The green number under it is that difference in dollars. A big positive
+    number means the market is undercharging for a genuinely scarce 10 — that's
+    the finding. Click any column to re-sort.
   </div>
   {warn}
 
@@ -236,8 +252,9 @@ TEMPLATE = """<!doctype html>
       <th data-k="pop">Pop</th>
       <th data-k="gem">Gem&nbsp;%</th>
       <th data-k="p9">PSA 9</th>
-      <th data-k="p10">PSA 10</th>
-      <th data-k="gap">Gap</th>
+      <th data-k="p10">PSA 10 costs</th>
+      <th data-k="fair">Model says worth</th>
+      <th data-k="gap">Ratio</th>
       <th data-k="disc" class="sorted">Discount</th>
       <th data-k="conf">Trust</th>
       <th data-k="score">Edge</th>
@@ -264,7 +281,7 @@ TEMPLATE = """<!doctype html>
   var table = document.getElementById('t');
   if (!table) return;
   var tbody = table.tBodies[0];
-  var keys = {{ pop:'pop', gem:'gem', p10:'p10', disc:'disc', conf:'conf', score:'score' }};
+  var keys = {{ pop:'pop', gem:'gem', p10:'p10', fair:'fair', disc:'disc', conf:'conf', score:'score' }};
   var desc = {{}};
   table.querySelectorAll('th[data-k]').forEach(function (th, idx) {{
     th.addEventListener('click', function () {{

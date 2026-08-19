@@ -158,6 +158,11 @@ def score_card(m, model):
     expected = model["predict"](m["gem_rate_pct"])
     m["gap"] = round(gap, 2)
     m["expected_gap"] = round(expected, 2)
+    # The discount restated in dollars, which is the only form that answers
+    # "what do I pay and what is it worth?". Anchored on the PSA 9 price,
+    # since that is the side the market prices most consistently.
+    m["fair_p10"] = round(m["p9_median"] * expected, 2)
+    m["headroom_usd"] = round(m["fair_p10"] - m["p10_median"], 2)
     if expected > 0:
         ratio = gap / expected
         m["value_ratio"] = round(ratio, 3)
