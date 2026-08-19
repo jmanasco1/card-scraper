@@ -1,0 +1,100 @@
+name: eBay Graded Card Scan
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub delays scheduled runs under load — see README;
+    # real cadence is looser than this and runs can be skipped entirely.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to run"
+        required: true
+        type: choice
+        default: collect
+        options:
+          - collect
+          - probe
+      max_pages:
+        description: "Override pages per run (blank = config.json value)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+# Runs commit to the repo, so never let two overlap and race on git push.
+concurrency:
+  group: ebay-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+      EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+      SCANNER_MAX_PAGES: ${{ inputs.max_pages }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r ebay_scanner/requirements.txt
+
+      # eBay application tokens last ~2h; this carries one across runs so most
+      # runs skip the token call entirely.
+      - name: Restore token cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ebay-token-${{ github.run_id }}
+          restore-keys: |
+            ebay-token-
+
+      - name: Verify credentials are present
+        run: |
+          if [ -z "$EBAY_CLIENT_ID" ] || [ -z "$EBAY_CLIENT_SECRET" ]; then
+            echo "::error::Missing repository secrets EBAY_CLIENT_ID and/or EBAY_CLIENT_SECRET."
+            echo "Add them under Settings -> Secrets and variables -> Actions."
+            echo "EBAY_CLIENT_ID  = eBay 'App ID (Client ID)'  from a PRODUCTION keyset"
+            echo "EBAY_CLIENT_SECRET = eBay 'Cert ID (Client Secret)' from the same keyset"
+            exit 1
+          fi
+
+      - name: Probe live API
+        if: ${{ inputs.mode == 'probe' }}
+        run: python -m ebay_scanner.probe
+
+      - name: Collect listings
+        id: collect
+        if: ${{ inputs.mode != 'probe' }}
+        run: python -m ebay_scanner.collect
+
+      - name: Commit new data
+        if: ${{ inputs.mode != 'probe' && steps.collect.outputs.new_count != '0' }}
+        run: |
+          git config user.name "card-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "Nothing staged; skipping commit."
+            exit 0
+          fi
+          git commit -m "eBay scan: ${{ steps.collect.outputs.new_count }} new listings $(date -u +%FT%TZ)"
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:${GITHUB_REF_NAME}; then
+              echo "Pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push failed (attempt $attempt); rebasing on remote and retrying"
+            git pull --rebase origin ${GITHUB_REF_NAME} || true
+            sleep $((2 ** attempt))
+          done
+          echo "::error::Could not push collected data after 4 attempts."
+          exit 1

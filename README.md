@@ -1,3 +1,9 @@
+> **This repo now holds two independent tools.**
+> - **eBay Graded Card Scanner** (`ebay_scanner/`) — continuously records newly-listed
+>   graded sports cards in a price band. Data collection only. **See
+>   [eBay Graded Card Scanner](#ebay-graded-card-scanner) below.**
+> - **GemRate Scanner** (`scraper/`) — the original population/gem-rate tool, documented first.
+
 # GemRate Scanner
 
 Finds cards with **high population + low gem rate** — heavily graded cards that are hard to pull in a gem grade.
@@ -90,3 +96,139 @@ Run the workflow with **debug = true** (or pass `--debug` locally) to get:
 
 - Delay between requests is 1.5s by default. Don't lower it aggressively — this relies on their free tier staying scrape-tolerant.
 - The free tier caps comps at ~5 recent sales, so momentum is a short-window signal. Treat results as a shortlist to verify manually (eBay solds), not a buy list.
+
+
+---
+
+# eBay Graded Card Scanner
+
+Records **newly-listed graded sports cards between $75 and $400** from the eBay
+Browse API, once every 15 minutes, appending to a git-friendly JSONL log.
+
+**This is data collection only.** There is deliberately no scoring, no
+alerting, and no valuation logic. The point is to build a continuous record
+first so you can eyeball how much mispricing actually exists before deciding
+what, if anything, is worth scoring.
+
+## What each run does
+
+1. Mints (or reuses) an eBay **application** access token via the
+   client-credentials OAuth flow.
+2. Reads the remaining daily Browse quota from the Developer Analytics
+   `getRateLimits` endpoint. **If fewer than 500 calls remain, the run logs a
+   warning and aborts before searching.**
+3. Verifies the configured category IDs against the live **Taxonomy API**
+   rather than trusting a hardcoded guess. The verification is cached to
+   `data/categories.json` for 7 days, so it costs no calls on most runs.
+4. Searches `item_summary/search`, sorted `newlyListed`, up to 3 pages of 200.
+5. **Dedupes on `itemId`** against everything already stored. Most runs are
+   mostly repeats; only genuinely new IDs go further.
+6. Enriches the new IDs with bulk item detail (20 per call) to pull
+   `localizedAspects` — grader, grade, cert number and friends.
+7. Appends to `data/YYYY-MM-DD.jsonl` and commits, **skipping the commit
+   entirely when nothing new was found.**
+8. Writes a GitHub Step Summary: new listings, total stored, calls used, quota
+   remaining, the 10 cheapest new items, and per-field coverage.
+
+## Setup
+
+Add two repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | eBay developer console field |
+|---|---|
+| `EBAY_CLIENT_ID` | **App ID (Client ID)** |
+| `EBAY_CLIENT_SECRET` | **Cert ID (Client Secret)** |
+
+Both must come from a **Production** keyset, not Sandbox — the sandbox
+environment has essentially no real graded-card inventory, so a sandbox-keyed
+run goes green while collecting nothing useful.
+
+Then: **Actions → eBay Graded Card Scan → Run workflow**. Choose `probe` to dump
+live API response shapes, or `collect` for a real run.
+
+## Scheduling reality
+
+The workflow is set to `*/15 * * * *`, but **GitHub does not honor that
+precisely.** Scheduled workflows are queued on a best-effort basis and are
+delayed — sometimes by many minutes — when the Actions fleet is under load. High
+frequency crons are the first to be dropped, and runs during peak hours are
+routinely skipped rather than merely postponed. Treat 15 minutes as a ceiling on
+frequency, not a guarantee. Because listings are deduped by `itemId` and sorted
+`newlyListed`, a missed run is self-healing as long as fewer than 600 matching
+listings appeared in the gap.
+
+Note also that **`schedule` only fires from the repository's default branch.**
+On any other branch the cron is inert and only `workflow_dispatch` works.
+
+### Actions minutes
+
+This repo is **private**, so Actions minutes are metered (2,000/month on the
+free tier). A 15-minute cron is ~2,880 runs/month; even at one minute per run
+that overruns the free allowance. Options: make the repo public (unlimited free
+minutes), accept the billing, or widen the cron to `*/30` or hourly.
+
+## Rate limits
+
+The Browse API allows **5,000 calls/day** at the application level. A typical
+run costs about 5 calls plus one per 20 new listings, so the 15-minute schedule
+lands well inside the budget. Quota is read and logged at the start of every
+run, and the run aborts below 500 remaining.
+
+## Stored fields
+
+Each JSONL line holds `itemId`, `title`, `price`, `currency`, `itemWebUrl`,
+`itemCreationDate`, seller username / feedback score / feedback percentage,
+`condition`, image URL, and the **full raw aspects blob**. These aspects are
+also lifted into their own columns when present:
+
+`grader` · `grade` · `cert_number` · `season` · `set_name` · `player` · `card_number`
+
+Aspect names vary between listings, so each column resolves from a list of
+candidate names (`Professional Grader`, `Grader`, `Grading Company`, …) and
+records which name actually matched in a companion `*_aspect` field. The raw
+blob is kept verbatim precisely so you can measure how often fields are
+missing — the Step Summary reports per-field coverage every run.
+
+## Ad-hoc querying
+
+```bash
+python -m ebay_scanner.load_sqlite            # -> cards.db
+python -m ebay_scanner.load_sqlite --rebuild  # drop and reload
+```
+
+Then query normally:
+
+```sql
+SELECT grader, grade, COUNT(*), ROUND(AVG(price), 2)
+FROM listings
+WHERE grader IS NOT NULL
+GROUP BY grader, grade
+ORDER BY COUNT(*) DESC;
+```
+
+`cards.db` is gitignored — it is a derived artifact, rebuildable from the JSONL
+at any time.
+
+## Configuration
+
+`ebay_scanner/config.json`:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `category_ids` | `["261328"]` | Verified against the Taxonomy API at runtime |
+| `price_min` / `price_max` | `75` / `400` | USD band |
+| `buying_options` | `["FIXED_PRICE"]` | Excludes auctions |
+| `sort` | `newlyListed` | |
+| `limit` / `max_pages` | `200` / `3` | Up to 600 listings per run |
+| `quota_abort_threshold` | `500` | Abort below this many remaining calls |
+| `aspect_filter` | `{"Graded": ["Yes"]}` | Narrows to graded cards |
+| `enrich_with_get_items` | `true` | Needed for aspects; costs 1 call per 20 new items |
+
+## Running locally
+
+```bash
+pip install -r ebay_scanner/requirements.txt
+export EBAY_CLIENT_ID=...  EBAY_CLIENT_SECRET=...
+python -m ebay_scanner.probe      # dump live response shapes
+python -m ebay_scanner.collect    # real run
+```
