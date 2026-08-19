@@ -50,7 +50,7 @@ def build_universe(client, cfg, category, grader, mode, debug):
     return client.walk_universe(category, grader, years=years, debug=debug)
 
 
-def price_candidates(client, targets, cfg, debug):
+def price_candidates(client, targets, cfg, debug, fresh=False):
     """Price each target on eBay, using and updating the on-disk cache."""
     limits = cfg["scan_limits"]
     ttl = limits.get("cache_ttl_days", 7)
@@ -62,7 +62,7 @@ def price_candidates(client, targets, cfg, debug):
     print("Solve any captcha in the browser window when prompted — the run waits for you.\n")
 
     for i, m in enumerate(targets, 1):
-        if cache_mod.get(cache, m, ttl):
+        if not fresh and cache_mod.get(cache, m, ttl):
             hits += 1
             if debug:
                 print(f"  [{i}/{len(targets)}] cached: {m['year']} {m['set']} {m['card']}")
@@ -74,8 +74,8 @@ def price_candidates(client, targets, cfg, debug):
             delay=limits["request_delay_seconds"], debug=debug, interactive=True,
             stats=stats,
         )
-        cache_mod.put(cache, m)
-        cache_mod.save(cache)
+        if cache_mod.put(cache, m):
+            cache_mod.save(cache)
         if not debug and i % 10 == 0:
             print(f"  priced {i}/{len(targets)}")
 
@@ -89,8 +89,12 @@ def diagnose(stats, priced_ok):
     """Turn the lookup counters into one sentence naming what went wrong.
     Returns None when pricing broadly worked."""
     attempted = stats.get("attempted", 0)
-    if not attempted or priced_ok:
+    if priced_ok:
         return None
+    if not attempted:
+        return ("No eBay lookups ran at all. Every card was served from the price "
+                "cache, so nothing was fetched. Delete results/.price_cache.json "
+                "and re-run, or pass --fresh.")
     if stats.get("captcha_blocked"):
         return ("eBay served a captcha on {n} of {a} lookups and it was never cleared, "
                 "so no prices came back. Re-run and solve the captcha in the browser "
@@ -121,6 +125,8 @@ def main():
                              "'top' uses only the all-time top-cards report")
     parser.add_argument("--limit", type=int, default=None,
                         help="how many cards to price on eBay this run")
+    parser.add_argument("--fresh", action="store_true",
+                        help="ignore the price cache and re-fetch every card")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
@@ -172,7 +178,7 @@ def main():
             m["ebay_url_10"] = comps_mod.build_ebay_url(m, 10)
             m["ebay_url_9"] = comps_mod.build_ebay_url(m, 9)
 
-        lookup_stats = price_candidates(client, targets, cfg, args.debug)
+        lookup_stats = price_candidates(client, targets, cfg, args.debug, args.fresh)
 
         model = fit_cohort(targets)
         for m in targets:

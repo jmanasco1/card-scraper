@@ -33,12 +33,25 @@ def save(cache):
     CACHE_PATH.write_text(json.dumps(cache, indent=1))
 
 
+def usable(entry):
+    """A cache entry is only worth reusing if it actually holds prices.
+
+    Failed lookups must never satisfy a later run: caching "no prices found"
+    would make a captcha or a bad search freeze into a result, and every re-run
+    for the length of the TTL would replay that failure without touching eBay
+    again. Retrying is cheap; a silently poisoned cache is not.
+    """
+    return bool(entry.get("p10_median")) and bool(entry.get("p9_median"))
+
+
 def get(cache, m, ttl_days):
-    """Copy cached prices onto `m`. Returns True on a fresh hit."""
+    """Copy cached prices onto `m`. Returns True on a fresh, usable hit."""
     entry = cache.get(card_key(m))
     if not entry:
         return False
     if time.time() - entry.get("ts", 0) > ttl_days * 86400:
+        return False
+    if not usable(entry):
         return False
     for f in _FIELDS:
         m[f] = entry.get(f)
@@ -48,6 +61,10 @@ def get(cache, m, ttl_days):
 
 
 def put(cache, m):
+    """Store a lookup, but only when it produced prices at both grades."""
     entry = {f: m.get(f) for f in _FIELDS}
+    if not usable(entry):
+        return False
     entry["ts"] = time.time()
     cache[card_key(m)] = entry
+    return True

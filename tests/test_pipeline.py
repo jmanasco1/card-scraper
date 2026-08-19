@@ -253,10 +253,15 @@ class TestDiagnostics(unittest.TestCase):
                                               "all_filtered": 9}, False))
         self.assertIn("network", diagnose({"attempted": 5, "nav_failed": 4}, False))
 
-    def test_silent_when_pricing_worked(self):
+    def test_silent_only_when_pricing_actually_worked(self):
         from scraper.scan import diagnose
         self.assertIsNone(diagnose({"attempted": 40}, True))
-        self.assertIsNone(diagnose({}, False))
+
+    def test_zero_lookups_is_never_silent(self):
+        """Staying quiet here is what let a poisoned cache look like a genuine
+        'no results' answer across repeated runs."""
+        from scraper.scan import diagnose
+        self.assertIsNotNone(diagnose({}, False))
 
 
 class TestRelaxedMatching(unittest.TestCase):
@@ -283,3 +288,46 @@ class TestRelaxedMatching(unittest.TestCase):
             "1986 Fleer Michael Jordan Rookie PSA 9", self.CARD, 10, require_number=False))
         self.assertFalse(comps.title_matches(
             "1992 Fleer Michael Jordan Rookie PSA 10", self.CARD, 10, require_number=False))
+
+
+class TestCache(unittest.TestCase):
+    """A failed lookup was being cached as a result, so re-runs replayed the
+    failure for the length of the TTL without ever contacting eBay again."""
+
+    def _card(self):
+        return {"year": "1986", "set": "Fleer", "card": "Michael Jordan",
+                "number": "57", "parallel": "Base"}
+
+    def test_failed_lookup_is_not_cached(self):
+        from scraper import cache as C
+        cache = {}
+        m = self._card()
+        m.update({"p10_median": None, "p10_sales": 0, "p9_median": None, "p9_sales": 0})
+        self.assertFalse(C.put(cache, m))
+        self.assertEqual(cache, {})
+        self.assertFalse(C.get(cache, m, 7))
+
+    def test_half_priced_lookup_is_not_cached(self):
+        from scraper import cache as C
+        cache = {}
+        m = self._card()
+        m.update({"p10_median": 500.0, "p10_sales": 6, "p9_median": None, "p9_sales": 0})
+        self.assertFalse(C.put(cache, m), "a ratio needs both grades to be useful")
+
+    def test_successful_lookup_round_trips(self):
+        from scraper import cache as C
+        cache = {}
+        m = self._card()
+        m.update({"p10_median": 500.0, "p10_sales": 8, "p10_spread": 0.3,
+                  "p9_median": 120.0, "p9_sales": 9, "p9_spread": 0.2})
+        self.assertTrue(C.put(cache, m))
+        fresh = self._card()
+        self.assertTrue(C.get(cache, fresh, 7))
+        self.assertEqual(fresh["p10_median"], 500.0)
+        self.assertEqual(fresh["p9_median"], 120.0)
+
+    def test_all_cached_run_is_reported_not_silent(self):
+        from scraper.scan import diagnose
+        msg = diagnose({}, False)
+        self.assertIsNotNone(msg)
+        self.assertIn("cache", msg)
