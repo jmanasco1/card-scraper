@@ -1,0 +1,9 @@
+{
+  "name": "ebay-deletion-endpoint",
+  "version": "1.0.0",
+  "private": true,
+  "description": "eBay marketplace account deletion notification endpoint",
+  "scripts": {
+    "test": "node test-challenge.js"
+  }
+}
