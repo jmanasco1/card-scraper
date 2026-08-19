@@ -25,10 +25,21 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
 BASE = "https://www.gemrate.com"
+
+# A persistent browser profile, kept next to the code and never committed.
+#
+# Without one, every run starts from a blank browser with no cookies. eBay
+# treats a signed-out, freshly-minted browser asking for sold listings as a bot
+# and walls it behind a sign-in it then refuses to accept — a login loop you
+# cannot type your way out of. Reusing one profile means signing in once, by
+# hand, and staying signed in across runs. It also carries Cloudflare's
+# clearance cookie forward, so gemrate.com stops re-challenging every run.
+PROFILE_DIR = Path(__file__).resolve().parent.parent / ".browser-profile"
 
 # Cloudflare sits in front of gemrate.com and serves a JS challenge
 # ("Just a moment...") to anything that looks automated. Headless mode is the
@@ -101,6 +112,36 @@ def launch_browser(pw, headless):
         except Exception:
             continue
     return pw.chromium.launch(**kwargs)
+
+
+def launch_persistent(pw, headless):
+    """Open the saved profile, creating it on first use. Returns a context.
+
+    Unlike launch_browser this keeps cookies on disk between runs, which is
+    what lets an eBay sign-in survive to the next scan.
+    """
+    PROFILE_DIR.mkdir(exist_ok=True)
+    kwargs = {
+        "user_data_dir": str(PROFILE_DIR),
+        "headless": headless,
+        "args": LAUNCH_ARGS,
+        "viewport": {"width": 1440, "height": 900},
+        "locale": "en-US",
+        "timezone_id": "America/New_York",
+    }
+    proxy = proxy_config()
+    if proxy:
+        kwargs["proxy"] = proxy
+    for channel in ("chrome", "msedge"):
+        try:
+            ctx = pw.chromium.launch_persistent_context(channel=channel, **kwargs)
+            ctx.add_init_script(STEALTH_JS)
+            return ctx
+        except Exception:
+            continue
+    ctx = pw.chromium.launch_persistent_context(**kwargs)
+    ctx.add_init_script(STEALTH_JS)
+    return ctx
 
 
 def new_stealth_context(browser):
@@ -216,14 +257,16 @@ class GemRateClient:
         from playwright.sync_api import sync_playwright
 
         self._pw = sync_playwright().start()
-        self._browser = launch_browser(self._pw, headless)
-        self._ctx = new_stealth_context(self._browser)
-        self.page = self._ctx.new_page()
+        self._ctx = launch_persistent(self._pw, headless)
+        pages = self._ctx.pages
+        self.page = pages[0] if pages else self._ctx.new_page()
 
     def close(self):
-        self._ctx.close()
-        self._browser.close()
-        self._pw.stop()
+        # A persistent context owns its browser, so closing it is enough.
+        try:
+            self._ctx.close()
+        finally:
+            self._pw.stop()
 
     def _goto(self, url):
         resp = self.page.goto(url, wait_until="domcontentloaded", timeout=60000)

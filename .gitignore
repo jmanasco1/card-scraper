@@ -6,3 +6,6 @@ results/.price_cache.json
 
 # local virtualenv created by run.sh
 .venv/
+
+# persistent browser profile (holds your eBay session — never commit)
+.browser-profile/

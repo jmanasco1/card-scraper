@@ -94,6 +94,25 @@ fi
 # eBay captcha in a window you can't see.
 export GEMRATE_HEADFUL=1
 
+# First run only: no saved profile means eBay will wall the scan behind a
+# sign-in it won't accept, so send the user through the login step first.
+if [ ! -d ".browser-profile" ]; then
+  cat <<'MSG'
+
+No saved browser profile yet.
+
+eBay blocks sold-listing searches from a browser with no session, and then
+refuses the login itself — a loop you can't type your way out of. Sign in once
+and the scan reuses that session from then on:
+
+    python -m scraper.login
+
+Then re-run this script.
+
+MSG
+  exit 1
+fi
+
 say "Starting the scan. A Chrome window will open — leave it visible."
 echo "When eBay shows a captcha, solve it in that window; the scan waits for you."
 echo
