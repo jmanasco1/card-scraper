@@ -28,8 +28,6 @@ import time
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
-from playwright.sync_api import sync_playwright
-
 BASE = "https://www.gemrate.com"
 
 # Cloudflare sits in front of gemrate.com and serves a JS challenge
@@ -212,6 +210,11 @@ class GemRateClient:
         self.debug = debug
         if headless is None:
             headless = default_headless()
+        # Imported here rather than at module scope so the parsing helpers and
+        # dataclasses in this module stay importable without a browser driver
+        # installed — the offline tests exercise them and have no use for one.
+        from playwright.sync_api import sync_playwright
+
         self._pw = sync_playwright().start()
         self._browser = launch_browser(self._pw, headless)
         self._ctx = new_stealth_context(self._browser)
