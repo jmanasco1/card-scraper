@@ -36,6 +36,9 @@ jobs:
     env:
       EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
       EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+      # Set repository variable EBAY_ENV to "sandbox" to target eBay's sandbox
+      # deployment. Defaults to production. Keys are not interchangeable.
+      EBAY_ENV: ${{ vars.EBAY_ENV || 'production' }}
       SCANNER_MAX_PAGES: ${{ inputs.max_pages }}
     steps:
       - uses: actions/checkout@v4

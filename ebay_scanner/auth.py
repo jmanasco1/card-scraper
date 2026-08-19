@@ -53,9 +53,27 @@ def get_token(client_id, client_secret, force=False):
         timeout=30,
     )
     if resp.status_code != 200:
-        raise SystemExit(
-            f"[auth] token request failed: HTTP {resp.status_code} {resp.text[:500]}"
-        )
+        detail = resp.text[:500]
+        message = [f"[auth] token request failed: HTTP {resp.status_code} {detail}"]
+        if resp.status_code in (400, 401) and "invalid_client" in detail:
+            keyset_env = config.keyset_environment(client_id)
+            message.append(
+                "\neBay rejected the credential pair itself. In order of likelihood:\n"
+                "  1. The Client ID and Client Secret come from DIFFERENT keysets. "
+                "They must be the App ID and Cert ID of the SAME application.\n"
+                "  2. EBAY_CLIENT_SECRET holds the wrong field. It must be the "
+                "'Cert ID (Client Secret)' — not the Dev ID, not the Ru Name, and "
+                "not the App ID again.\n"
+                "  3. The keyset is for a different environment than "
+                f"{config.ENV} ({config.API_HOST}).\n"
+                "  4. The keyset has been regenerated or disabled in the eBay "
+                "developer console, invalidating the stored secret.\n"
+                f"\nDetected keyset environment from the App ID: "
+                f"{keyset_env or 'UNRECOGNIZED'}. Target: {config.ENV}.\n"
+                "Re-copy both values from the same row of "
+                "https://developer.ebay.com/my/keys and update both secrets."
+            )
+        raise SystemExit("\n".join(message))
     payload = resp.json()
     token = payload["access_token"]
     expires_in = int(payload.get("expires_in", 7200))
