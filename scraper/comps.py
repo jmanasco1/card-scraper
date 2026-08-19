@@ -101,7 +101,7 @@ def _norm(text):
 
 
 def build_query(metrics, grade=10):
-    """eBay search string for one card at one grade."""
+    """eBay search string for one card at one grade. grade=None means raw."""
     parts = [metrics.get("year", ""), metrics.get("set", ""), metrics.get("card", "")]
     parallel = metrics.get("parallel", "")
     if parallel and parallel.lower() != "base":
@@ -109,7 +109,8 @@ def build_query(metrics, grade=10):
     num = str(metrics.get("number", "") or "").strip()
     if num:
         parts.append(f"#{num}")
-    parts.append(f"PSA {grade}")
+    if grade is not None:
+        parts.append(f"PSA {grade}")
     return " ".join(str(p) for p in parts if p).strip()
 
 
@@ -144,18 +145,26 @@ def reject_reason(title, metrics, grade, require_number=True):
         if j in t:
             return f"junk term {j!r}"
 
-    want = f"psa {grade}"
-    if want not in t:
-        return f"no {want!r} in title"
-    # Reject titles carrying a different grade too ("PSA 9 and PSA 10 lot",
-    # "upgrade from PSA 9"). Exactly one grade token may appear.
-    present = {g for g in _ALL_GRADES if g in t}
-    # "psa 10" contains no other token, but "psa 9" is a substring of nothing
-    # here since we normalized spacing; guard the 9/9.5 overlap explicitly.
-    if want == "psa 9" and "psa 9.5" in t:
-        return "is a PSA 9.5"
-    if present != {want}:
-        return f"carries other grades {sorted(present - {want})}"
+    if grade is None:
+        # Raw means ungraded. Any grader's name or slab language and the
+        # listing is priced as a graded card — a different product, and the gap
+        # between the two is the whole point. Everything below this still
+        # applies: a raw parallel is no more the base card than a slabbed one.
+        for g in ("psa", "bgs", "sgc", "cgc", "beckett", "graded", "slab", "gem mint"):
+            if re.search(rf"\b{g}\b", t):
+                return f"graded listing ({g}), not raw"
+    else:
+        want = f"psa {grade}"
+        if want not in t:
+            return f"no {want!r} in title"
+        # Reject titles carrying a different grade too ("PSA 9 and PSA 10 lot",
+        # "upgrade from PSA 9"). Exactly one grade token may appear.
+        present = {g for g in _ALL_GRADES if g in t}
+        # Guard the 9/9.5 overlap explicitly.
+        if want == "psa 9" and "psa 9.5" in t:
+            return "is a PSA 9.5"
+        if present != {want}:
+            return f"carries other grades {sorted(present - {want})}"
 
     # --- the player has to actually be on the card -------------------------
     #
@@ -532,6 +541,13 @@ def price_card(page, metrics, delay=1.5, debug=False, interactive=True, stats=No
         stats = {}
     ten = fetch_grade_comps(page, metrics, 10, delay, debug, interactive, stats)
     nine = fetch_grade_comps(page, metrics, 9, delay, debug, interactive, stats)
+    # The raw price is what the whole grading calculation is bought at, so it
+    # is fetched for every card rather than only when the graded pair works out.
+    raw = fetch_grade_comps(page, metrics, None, delay, debug, interactive, stats)
+    metrics["raw_median"] = raw["median"] if raw else None
+    metrics["raw_sales"] = raw["sales"] if raw else 0
+    metrics["raw_low"] = raw["low"] if raw else None
+    metrics["raw_high"] = raw["high"] if raw else None
     stats["attempted"] = stats.get("attempted", 0) + 1
 
     for prefix, res in (("p10", ten), ("p9", nine)):

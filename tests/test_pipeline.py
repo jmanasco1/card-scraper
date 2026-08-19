@@ -545,12 +545,14 @@ class TestCacheKeepsTrends(unittest.TestCase):
         self.assertTrue(C.get(cache, back, 7))
         self.assertEqual(back["p10_trend"]["change_pct"], -28.3)
 
-    def test_entry_without_a_trend_is_not_reused(self):
+    def test_entry_without_a_raw_price_is_still_cached(self):
+        """Plenty of vintage never trades raw. That is a fact about the card,
+        not a failed lookup, so refetching it forever would be pointless."""
         from scraper import cache as C
         m = self._card()
-        m.update({"p10_median": 430.0, "p9_median": 197.0})   # priced, no history
+        m.update({"p10_median": 430.0, "p9_median": 197.0, "raw_median": None})
         cache = {}
-        self.assertFalse(C.put(cache, m))
+        self.assertTrue(C.put(cache, m))
 
 
 class TestAlwaysShowMeasuredCards(unittest.TestCase):
@@ -666,3 +668,54 @@ class TestOutputsActuallyWrite(unittest.TestCase):
         rows[0]["is_finding"] = True
         out = self._write(rows, findings=1)
         self.assertIn("★", out["summary_basketball.md"])
+
+
+class TestGradingEV(unittest.TestCase):
+    """Buy raw, grade it, sell it. Every input is observed and the output is a
+    dollar figure, so nobody has to supply a definition of 'value'."""
+
+    def test_profitable_card(self):
+        from scraper.grading import grading_ev
+        m = {"raw_median": 40.0, "p10_median": 300.0, "p9_median": 70.0,
+             "gem_rate_pct": 35.0}
+        self.assertTrue(grading_ev(m))
+        self.assertGreater(m["grade_edge"], 0)
+        self.assertLess(m["breakeven_gem_pct"], m["gem_rate_pct"],
+                        "profitable when it gems more often than break-even needs")
+
+    def test_high_ceiling_card_that_never_gems_is_a_loss(self):
+        """A $4,000 PSA 10 is worthless as a target if the card gems 2% of the
+        time and a raw copy costs $300."""
+        from scraper.grading import grading_ev
+        m = {"raw_median": 300.0, "p10_median": 4000.0, "p9_median": 350.0,
+             "gem_rate_pct": 2.0}
+        grading_ev(m)
+        self.assertLess(m["grade_edge"], 0)
+
+    def test_fees_and_grading_cost_are_not_ignored(self):
+        """Gross proceeds would call this a winner; it isn't."""
+        from scraper.grading import grading_ev, net_proceeds
+        self.assertLess(net_proceeds(100.0), 100.0)
+        m = {"raw_median": 90.0, "p10_median": 120.0, "p9_median": 95.0,
+             "gem_rate_pct": 90.0}
+        grading_ev(m)
+        self.assertLess(m["grade_edge"], 0)
+
+    def test_needs_all_three_prices(self):
+        from scraper.grading import grading_ev
+        self.assertFalse(grading_ev({"p10_median": 300.0, "p9_median": 70.0,
+                                     "gem_rate_pct": 35.0}))          # no raw
+        self.assertFalse(grading_ev({"raw_median": 40.0, "p9_median": 70.0,
+                                     "gem_rate_pct": 35.0}))          # no 10
+
+    def test_ranking_drops_thin_and_marginal_cards(self):
+        from scraper.grading import rank_by_ev
+        good = {"raw_median": 40.0, "p10_median": 300.0, "p9_median": 70.0,
+                "gem_rate_pct": 35.0, "raw_sales": 8,
+                "p10_sales": 10, "p9_sales": 10, "confidence": 1.0}
+        thin = dict(good, raw_sales=1)
+        marginal = {"raw_median": 100.0, "p10_median": 135.0, "p9_median": 105.0,
+                    "gem_rate_pct": 50.0, "raw_sales": 9,
+                    "p10_sales": 10, "p9_sales": 10, "confidence": 1.0}
+        out = rank_by_ev([good, thin, marginal])
+        self.assertEqual([id(m) for m in out], [id(good)])

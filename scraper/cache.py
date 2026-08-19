@@ -17,13 +17,14 @@ CACHE_PATH = Path(__file__).resolve().parent.parent / "results" / ".price_cache.
 # omitting them meant a cached card came back with prices, no price history,
 # and no way to rank — a run that looked priced and scored nothing.
 _FIELDS = ("p10_median", "p10_sales", "p10_spread", "p10_low", "p10_high", "p10_trend",
-           "p9_median", "p9_sales", "p9_spread", "p9_low", "p9_high", "p9_trend")
+           "p9_median", "p9_sales", "p9_spread", "p9_low", "p9_high", "p9_trend",
+           "raw_median", "raw_sales", "raw_low", "raw_high")
 
 # Bumped whenever a change to comp matching invalidates prices collected under
 # the old rules. Entries from an older version are ignored rather than reused,
 # so a fix to what counts as a comp actually takes effect instead of being
 # masked by cached results gathered before it.
-VERSION = 7
+VERSION = 8
 
 
 def card_key(m):
@@ -50,8 +51,7 @@ def usable(entry):  # noqa: D401
     for the length of the TTL would replay that failure without touching eBay
     again. Retrying is cheap; a silently poisoned cache is not.
     """
-    return (bool(entry.get("p10_median")) and bool(entry.get("p9_median"))
-            and bool(entry.get("p10_trend")) and bool(entry.get("p9_trend")))
+    return bool(entry.get("p10_median")) and bool(entry.get("p9_median"))
 
 
 def get(cache, m, ttl_days):

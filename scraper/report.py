@@ -80,9 +80,11 @@ def render(sport, ranked, model, stats, uni_report, sample=False, problem=None,
         <td class="num-col">{r.get('total_pop', 0):,}</td>
         <td class="num-col">{r.get('gem_rate_pct', 0)}%</td>
 
-        <td class="num-col buy">{_move(r, 'p10')}</td>
-        <td class="num-col">{_move(r, 'p9')}</td>
-        <td class="num-col disloc">{(r.get('dislocation_pct') or 0):+.0f} pts</td>
+        <td class="num-col buy">${(r.get('raw_median') or 0):,.0f}<span class="n">{r.get('raw_sales', 0)}</span></td>
+        <td class="num-col">${(r.get('ev_cost') or 0):,.0f}<span class="n">incl. grading</span></td>
+        <td class="num-col">${(r.get('grade_ev') or 0):,.0f}<span class="n">after fees</span></td>
+        <td class="num-col disloc">${(r.get('grade_edge') or 0):+,.0f}<span class="n">{(r.get('grade_roi_pct') or 0):+.0f}% ROI</span></td>
+        <td class="num-col">{(r.get('breakeven_gem_pct') or 0):.0f}%<span class="n">vs {r.get('gem_rate_pct')}% actual</span></td>
         <td class="disc {sign}">
           <div class="dval">{disc:+.0f}%</div>
           <div class="dbar"><span style="width:{_bar(disc):.1f}%"></span></div>
@@ -283,12 +285,13 @@ TEMPLATE = """<!doctype html>
   <div class="fit">Fitted premium curve: {fit}</div>
 
   <div class="lede">
-    Every number here is <b>an actual sale price</b>. Each grade shows what the
-    card used to sell for, what it sells for now, and how many sales each side
-    of that is based on. The last column is the difference between the two
-    moves: a card whose PSA 10 has fallen while its own PSA 9 held steady is
-    dislocated against itself. Nothing is predicted, and no card is compared
-    against any other card.
+    <b>Buy it raw, grade it, sell it.</b> <b>Raw costs</b> is what an ungraded
+    copy actually sells for. <b>All-in</b> adds $25 to grade it. <b>Expect back</b>
+    is what you get on average, after eBay fees and shipping, weighting the PSA 10
+    price by how often the card actually gems and the rest by the PSA 9 price with
+    a haircut. <b>Profit</b> is the difference. <b>Needs to gem</b> is the rate
+    required just to break even — if that's higher than the card's real gem rate,
+    it's a losing trade no matter how big the PSA 10 price looks.
   </div>
   {warn}
 
@@ -299,9 +302,11 @@ TEMPLATE = """<!doctype html>
       <th>Card</th>
       <th data-k="pop">Pop</th>
       <th data-k="gem">Gem&nbsp;%</th>
-      <th data-k="p10">PSA 10 — its own sales</th>
-      <th data-k="p9">PSA 9 — its own sales</th>
-      <th data-k="disc" class="sorted">10 vs its 9</th>
+      <th data-k="raw">Raw costs</th>
+      <th data-k="cost">All-in</th>
+      <th data-k="ev">Expect back</th>
+      <th data-k="disc" class="sorted">Profit</th>
+      <th data-k="be">Needs to gem</th>
       <th data-k="conf">Trust</th>
       <th data-k="score">Edge</th>
       <th>Verify</th>

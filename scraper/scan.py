@@ -29,6 +29,7 @@ from . import cache as cache_mod
 from . import comps as comps_mod
 from . import report as report_mod
 from .gemrate import GemRateClient
+from .grading import rank_by_ev
 from .ranking import analyze, cohort_stats, measured, rank, select_for_pricing
 from .value import fit_cohort, score_card
 
@@ -140,6 +141,11 @@ def diagnose(stats, priced_ok):
                 "That usually means eBay changed its result markup, or the searches "
                 "genuinely have no sold results. Re-run with --debug to see the pages."
                 ).format(n=stats["no_listings"])
+    if stats.get("no_raw_prices"):
+        return ("Graded prices came back, but no raw (ungraded) sales were found for "
+                "these cards, and the raw price is what the grading maths is bought "
+                "at. Vintage cards in particular rarely trade raw. Try a scan weighted "
+                "to modern cards.")
     if stats.get("measured_but_no_dislocation"):
         return ("Priced and measured {n} cards, but none showed a PSA 10 falling far "
                 "enough against its own PSA 9 to flag. Their prices and price history "
@@ -230,9 +236,12 @@ def main():
         for m in targets:
             score_card(m, model)
 
-        ranked = rank(targets, cfg["ranking_weights"], filters["min_sales_per_grade"],
-                      filters.get("min_edge_usd", 25),
-                      filters.get("min_move_pct", 15))
+        ranked = rank_by_ev(
+            targets,
+            min_edge_usd=filters.get("min_edge_usd", 20),
+            min_roi_pct=filters.get("min_roi_pct", 15),
+            min_sales=filters["min_sales_per_grade"],
+        )
         stats = cohort_stats(targets)
 
         print(f"\nFitted premium curve: {model['kind']}, "
@@ -242,8 +251,13 @@ def main():
                   f"{'scarcer 10s do command higher premiums in this pool' if model['slope'] > 0.15 else 'this pool barely prices scarcity at all, treat results as weak'}")
         dated = sum(1 for m in targets if m.get("p10_trend") and m.get("p9_trend"))
         priced = sum(1 for m in targets if m.get("p10_median") and m.get("p9_median"))
+        with_raw = sum(1 for m in targets if m.get("raw_median"))
+        print(f"{with_raw} of {len(targets)} also had raw (ungraded) sales, "
+              f"which is what the grading maths needs.")
         if priced and not dated:
             lookup_stats["priced_ok_but_no_trend"] = priced
+        if priced and not with_raw:
+            lookup_stats["no_raw_prices"] = priced
         if dated and not ranked:
             lookup_stats["measured_but_no_dislocation"] = dated
         print(f"{dated} of {len(targets)} cards had enough dated sales at both "
@@ -254,7 +268,14 @@ def main():
             print(f"\n!! {problem}")
 
         # Show every card we priced, not only the ones clearing the threshold.
-        shown = measured(targets, filters["min_sales_per_grade"])
+        # Show every card the maths could be run on, findings flagged.
+        from .grading import grading_ev
+        shown = [m for m in targets if grading_ev(m)]
+        for m in shown:
+            m.setdefault("is_finding", False)
+        for m in ranked:
+            m["is_finding"] = True
+        shown.sort(key=lambda m: m.get("grade_edge") or 0, reverse=True)
         write_outputs(sport, shown[: limits["max_results"]], model, stats, uni_report,
                       problem=problem, findings=len(ranked))
         print(f"\nDone. Open the report:  results/report_{sport}.html")
@@ -263,7 +284,8 @@ def main():
 
 
 FIELDS = [
-    "is_finding", "dislocation_pct", "score", "confidence",
+    "is_finding", "grade_edge", "grade_roi_pct", "breakeven_gem_pct", "score", "confidence",
+    "raw_median", "raw_sales", "ev_cost", "grade_ev",
     "year", "set", "card", "number", "parallel",
     "total_pop", "gem_pop", "gem_rate_pct",
     "p10_was", "p10_now", "p10_change_pct", "p10_sales",
