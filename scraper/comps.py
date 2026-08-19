@@ -43,6 +43,30 @@ _JUNK = (
 _SET_STOPWORDS = {"the", "of", "and", "series", "set", "cards", "card", "base",
                   "update", "basketball", "baseball", "football", "hockey"}
 
+# Words that mark a card as a parallel, insert or variation rather than the
+# base card. A base PSA 9 Cooper Flagg trades around $46 while its Refractor
+# trades around $370, so counting both as one card inflates every median it
+# touches — the single biggest source of wrong prices in this scraper.
+#
+# Colours are included because most parallels are named by colour, but colour
+# words also appear in player names (Draymond Green) and set names (Gold
+# Label), so any token that occurs in the card's own name or set is dropped
+# from this list before it is applied.
+_PARALLEL_WORDS = {
+    "refractor", "xfractor", "x-fractor", "superfractor", "fractor",
+    "holo", "holofoil", "foilboard", "shimmer", "wave", "raywave", "ray",
+    "cracked", "mojo", "sepia", "atomic", "negative", "disco", "hyper",
+    "laser", "scope", "velocity", "camo", "tiger", "snakeskin", "choice",
+    "downtown", "die-cut", "diecut", "variation", "ssp", "sp", "prizm",
+    "autograph", "auto", "patch", "relic", "jersey", "memorabilia", "signed",
+    "gold", "silver", "bronze", "platinum", "pink", "green", "blue", "red",
+    "purple", "orange", "black", "yellow", "teal", "aqua", "copper", "ruby",
+    "sapphire", "emerald", "rainbow", "speckle", "mosaic", "optic", "ice",
+}
+
+# A serial number ("/25", "/199") only ever appears on a limited parallel.
+_SERIAL_RE = re.compile(r"/\s?\d{1,4}\b")
+
 # Grades that must NOT appear when we're searching for a specific grade.
 _ALL_GRADES = ("psa 10", "psa 9", "psa 8", "psa 7", "psa 6", "psa 5",
                "bgs 10", "bgs 9.5", "bgs 9", "sgc 10", "sgc 9.5", "sgc 9")
@@ -130,6 +154,24 @@ def reject_reason(title, metrics, grade, require_number=True):
         if len(name_tokens) > 1 and not any(w in t for w in name_tokens[:-1]):
             return f"only surname matched, missing {name_tokens[:-1]}"
 
+    # --- base cards and parallels are different cards -----------------------
+    parallel = (metrics.get("parallel") or "").strip().lower()
+    own_words = set(re.findall(r"[a-z]+", (metrics.get("card") or "").lower()))
+    own_words |= set(re.findall(r"[a-z]+", (metrics.get("set") or "").lower()))
+    if parallel and parallel != "base":
+        # We want a specific parallel: it has to be named.
+        wanted = [w for w in re.findall(r"[a-z]+", parallel) if len(w) > 2]
+        if wanted and not all(w in t for w in wanted):
+            return f"not the {parallel!r} parallel"
+    else:
+        # We want the base card: anything naming a parallel is a different card.
+        suspects = _PARALLEL_WORDS - own_words
+        hit = next((w for w in suspects if re.search(rf"\b{re.escape(w)}\b", t)), None)
+        if hit:
+            return f"parallel/insert {hit!r}, not the base card"
+        if _SERIAL_RE.search(t):
+            return "serial-numbered parallel"
+
     # --- and it has to be from the right set -------------------------------
     set_tokens = [w for w in re.findall(r"[a-z]+", (metrics.get("set") or "").lower())
                   if len(w) > 2 and w not in _SET_STOPWORDS]
@@ -141,13 +183,23 @@ def reject_reason(title, metrics, grade, require_number=True):
         # Match the season either as '1997' or as '1997-98'.
         short = year[2:]
         nxt = str(int(year) + 1)[2:]
-        if not re.search(rf"\b{year}\b", t) and f"{year}-{nxt}" not in t and f"{short}-{nxt}" not in t:
-            return f"year {year} absent"
+        has_year = (re.search(rf"\b{year}\b", t) or f"{year}-{nxt}" in t
+                    or f"{short}-{nxt}" in t)
+        # Sellers often omit the year when the set and number already identify
+        # the card. Only insist on it when a *different* year is stated, which
+        # would mean a different card.
+        other_year = re.search(r"\b(19[5-9]\d|20[0-4]\d)\b", t)
+        if not has_year and other_year:
+            return f"year {other_year.group(1)}, wanted {year}"
 
     num = str(metrics.get("number", "") or "").strip()
     if require_number and num:
-        if not re.search(rf"(#\s*{re.escape(num)}\b|\bno\.?\s*{re.escape(num)}\b)", t):
-            return f"card number #{num} absent"
+        # eBay sellers write the number as "#165", "No. 165" or just "165".
+        # Requiring the hash discarded plenty of correct comps; by this point
+        # the player, set and year already match, so a bare number is safe.
+        if not re.search(rf"(#\s*{re.escape(num)}\b|\bno\.?\s*{re.escape(num)}\b"
+                         rf"|\b{re.escape(num)}\b)", t):
+            return f"card number {num} absent"
     elif num:
         # Relaxed pass: a *different* explicit number is still disqualifying,
         # we just no longer insist one be present.

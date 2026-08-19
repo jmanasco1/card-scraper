@@ -20,7 +20,7 @@ _FIELDS = ("p10_median", "p10_sales", "p10_spread", "p10_low", "p10_high",
 # the old rules. Entries from an older version are ignored rather than reused,
 # so a fix to what counts as a comp actually takes effect instead of being
 # masked by cached results gathered before it.
-VERSION = 3
+VERSION = 4
 
 
 def card_key(m):

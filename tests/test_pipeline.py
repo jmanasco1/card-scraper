@@ -409,3 +409,62 @@ class TestPaddingAndOutliers(unittest.TestCase):
             self.assertTrue(
                 any(m in phrase.lower() for m in comps._PADDING_MARKERS),
                 f"{phrase!r} must be recognised as the start of padding")
+
+
+class TestParallelSeparation(unittest.TestCase):
+    """Titles here are verbatim from a real run's audit. A base PSA 9 Cooper
+    Flagg trades near $46; its Refractor near $370. Counting both as one card
+    inflated every median the scraper produced."""
+
+    FLAGG = {"year": "2025", "set": "Topps Chrome", "card": "Cooper Flagg",
+             "number": "251", "parallel": "Base"}
+    MORANT = {"year": "2019", "set": "Panini Chronicles", "card": "Ja Morant",
+              "number": "165", "parallel": "Base"}
+
+    def test_base_search_rejects_parallels(self):
+        for t in ("COOPER FLAGG 2025-26 TOPPS CHROME REFRACTOR ROOKIE RC #251 MAVERICKS PSA 9",
+                  "2025 Topps Chrome Cooper Flagg X-Fractor RC #251 PSA 9 MINT Rookie",
+                  "2025-26 Topps Chrome - Cooper Flagg #251 RayWave Refractor (RC) PSA 9"):
+            self.assertIsNotNone(comps.reject_reason(t, self.FLAGG, 9), t[:50])
+
+    def test_base_search_keeps_base(self):
+        for t in ("2025-26 Topps Chrome Cooper Flagg RC Rookie #251 Mavericks PSA 9",
+                  "2025 TOPPS CHROME #251 COOPER FLAGG ROOKIE RC PSA 9",
+                  "2025-26 Topps Chrome - Cooper Flagg #251 (RC) PSA 9"):
+            self.assertIsNone(comps.reject_reason(t, self.FLAGG, 9), t[:50])
+
+    def test_colour_parallels_rejected_for_base(self):
+        for t in ("2019-20 Panini Chronicles - Luminance Pink #165 Ja Morant RC PSA 10",
+                  "Ja Morant 2019 Panini Chronicles Luminance 165 Rookie Bronze PSA 10"):
+            self.assertIsNotNone(comps.reject_reason(t, self.MORANT, 10), t[:50])
+
+    def test_colour_in_the_player_name_is_not_a_parallel(self):
+        """Draymond Green's base card must not be read as a green parallel."""
+        card = {"year": "2012", "set": "Topps Chrome", "card": "Draymond Green",
+                "number": "22", "parallel": "Base"}
+        self.assertIsNone(comps.reject_reason(
+            "2012-13 Topps Chrome Draymond Green #22 RC PSA 10", card, 10))
+
+    def test_serial_numbered_cards_are_parallels(self):
+        self.assertIsNotNone(comps.reject_reason(
+            "2025 Topps Chrome Cooper Flagg #251 PSA 9 /99", self.FLAGG, 9))
+
+    def test_requesting_a_parallel_requires_it(self):
+        card = dict(self.FLAGG, parallel="Refractor")
+        self.assertIsNone(comps.reject_reason(
+            "2025 Topps Chrome Cooper Flagg Refractor #251 PSA 9", card, 9))
+        self.assertIsNotNone(comps.reject_reason(
+            "2025 Topps Chrome Cooper Flagg #251 PSA 9", card, 9))
+
+    def test_bare_card_number_is_accepted(self):
+        """'...Grizzlies 165 PSA 9' was being discarded for lacking a '#'."""
+        self.assertIsNone(comps.reject_reason(
+            "2019-20 Panini Chronicles 165 Ja Morant RC Luminance The Dunk Rookie PSA 10",
+            self.MORANT, 10))
+
+    def test_missing_year_is_tolerated_but_wrong_year_is_not(self):
+        self.assertIsNone(comps.reject_reason(
+            "Panini Chronicles Luminance Ja Morant Rookie #165 Grizzlies PSA 10",
+            self.MORANT, 10))
+        self.assertIsNotNone(comps.reject_reason(
+            "2021-22 Panini Chronicles Ja Morant #165 PSA 10", self.MORANT, 10))

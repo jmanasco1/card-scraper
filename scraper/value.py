@@ -63,29 +63,74 @@ def _scarcity_x(gem_rate_pct):
     return math.log(100.0 / max(gem_rate_pct, MIN_GEM_RATE))
 
 
-def _fit_loglog(points):
-    """Least-squares fit of y = a + b*x over [(x, y)]. Returns (a, b)."""
+def _solve(matrix):
+    """Gaussian elimination with partial pivoting on an augmented matrix."""
+    n = len(matrix)
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(matrix[r][col]))
+        if abs(matrix[pivot][col]) < 1e-12:
+            return None
+        matrix[col], matrix[pivot] = matrix[pivot], matrix[col]
+        pv = matrix[col][col]
+        matrix[col] = [v / pv for v in matrix[col]]
+        for r in range(n):
+            if r == col:
+                continue
+            f = matrix[r][col]
+            if f:
+                matrix[r] = [v - f * w for v, w in zip(matrix[r], matrix[col])]
+    return [row[n] for row in matrix]
+
+
+def _fit(points):
+    """Least squares of y = a + b*x1 + c*x2 over [(x1, x2, y)].
+
+    Two regressors, not one. Fitting the grade premium on scarcity alone treats
+    a junk-wax common that gems 2% of the time as if it should command the same
+    premium as a star rookie that gems 2% of the time. It shouldn't: gem rate
+    is a supply measure, and a premium only exists where there is demand for
+    the 10. The PSA 9 price is the demand proxy we already have — a card whose
+    9 trades at $200 is wanted in a way a $2 card is not — so it enters as the
+    second regressor. Without it the model reliably over-values obscure,
+    hard-to-gem, unwanted cards, which is exactly what it did.
+    """
     n = len(points)
-    mean_x = sum(p[0] for p in points) / n
-    mean_y = sum(p[1] for p in points) / n
-    sxx = sum((p[0] - mean_x) ** 2 for p in points)
-    if sxx == 0:
-        return mean_y, 0.0
-    sxy = sum((p[0] - mean_x) * (p[1] - mean_y) for p in points)
-    b = sxy / sxx
-    return mean_y - b * mean_x, b
+    if n < 3:
+        mean_y = sum(p[2] for p in points) / n if n else 0.0
+        return mean_y, 0.0, 0.0
+    s1 = sum(p[0] for p in points)
+    s2 = sum(p[1] for p in points)
+    sy = sum(p[2] for p in points)
+    s11 = sum(p[0] * p[0] for p in points)
+    s12 = sum(p[0] * p[1] for p in points)
+    s22 = sum(p[1] * p[1] for p in points)
+    s1y = sum(p[0] * p[2] for p in points)
+    s2y = sum(p[1] * p[2] for p in points)
+    sol = _solve([[n, s1, s2, sy],
+                  [s1, s11, s12, s1y],
+                  [s2, s12, s22, s2y]])
+    if sol is None:
+        mean_y = sy / n
+        return mean_y, 0.0, 0.0
+    return sol[0], sol[1], sol[2]
 
 
-def _r_squared(points, a, b):
+def _demand_x(p9_median):
+    """Second model input: the log of the PSA 9 price, standing in for how much
+    anyone actually wants this card."""
+    return math.log(max(p9_median, 1.0))
+
+
+def _r_squared(points, a, b, c=0.0):
     """How much of the cohort's gap variation the fit explains. Low values mean
     the cohort prices scarcity inconsistently — which is itself worth knowing,
     so we report it rather than hiding it."""
     n = len(points)
-    mean_y = sum(p[1] for p in points) / n
-    ss_tot = sum((p[1] - mean_y) ** 2 for p in points)
+    mean_y = sum(p[2] for p in points) / n
+    ss_tot = sum((p[2] - mean_y) ** 2 for p in points)
     if ss_tot == 0:
         return 0.0
-    ss_res = sum((p[1] - (a + b * p[0])) ** 2 for p in points)
+    ss_res = sum((p[2] - (a + b * p[0] + c * p[1])) ** 2 for p in points)
     return max(0.0, 1.0 - ss_res / ss_tot)
 
 
@@ -125,23 +170,23 @@ def fit_cohort(candidates):
             "n": len(priced),
             "median_gap": median_gap,
             "r_squared": 0.0,
-            "predict": lambda _rate: median_gap,
+            "predict": lambda _rate, _p9=None: median_gap,
         }
 
     points = [
-        (_scarcity_x(m["gem_rate_pct"]), math.log(gap))
+        (_scarcity_x(m["gem_rate_pct"]), _demand_x(m["p9_median"]), math.log(gap))
         for m, gap in zip(priced, gaps)
         if gap > 0
     ]
-    a, b = _fit_loglog(points)
+    a, b, c = _fit(points)
 
     # Refit on the well-behaved core so the outliers we're hunting don't set
     # the standard they're judged against.
     keep = len(points) - int(len(points) * TRIM_FRACTION)
     trimmed = points
     if keep >= MIN_COHORT_FOR_FIT:
-        trimmed = sorted(points, key=lambda p: abs(p[1] - (a + b * p[0])))[:keep]
-        a, b = _fit_loglog(trimmed)
+        trimmed = sorted(points, key=lambda p: abs(p[2] - (a + b * p[0] + c * p[1])))[:keep]
+        a, b, c = _fit(trimmed)
 
     # Never extrapolate past the scarcity range we actually observed. A 0.49%
     # gem rate sits far outside the bulk of any pool, and an unclamped log-log
@@ -150,11 +195,19 @@ def fit_cohort(candidates):
     # "fair value". Predictions outside the observed range are pinned to its
     # edges instead.
     xs = [p[0] for p in trimmed]
+    ds = [p[1] for p in trimmed]
     lo_x, hi_x = min(xs), max(xs)
+    lo_d, hi_d = min(ds), max(ds)
+    observed_gaps = [math.exp(p[2]) for p in trimmed]
+    gap_ceiling = max(observed_gaps) * 1.25
 
-    def predict(rate):
+    def predict(rate, p9=None):
         x = min(max(_scarcity_x(rate), lo_x), hi_x)
-        return math.exp(a + b * x)
+        d = min(max(_demand_x(p9 if p9 else math.exp(sum(ds) / len(ds))), lo_d), hi_d)
+        # No card is worth more of a premium than the biggest one this pool
+        # actually demonstrated. Predicting past that is how a $70 comp became
+        # $1,578 of "fair value".
+        return min(math.exp(a + b * x + c * d), gap_ceiling)
 
     return {
         "kind": "loglog",
@@ -165,8 +218,10 @@ def fit_cohort(candidates):
         "median_gap": statistics.median(gaps),
         # R^2 is reported over the trimmed core the curve was actually fitted
         # to; it describes how consistently the normal cards price scarcity.
-        "r_squared": _r_squared(trimmed, a, b),
+        "demand_slope": c,
+        "r_squared": _r_squared(trimmed, a, b, c),
         "x_range": (lo_x, hi_x),
+        "gap_ceiling": gap_ceiling,
         "predict": predict,
     }
 
@@ -184,7 +239,7 @@ def score_card(m, model):
         return False
 
     gap = m["p10_median"] / m["p9_median"]
-    expected = model["predict"](m["gem_rate_pct"])
+    expected = model["predict"](m["gem_rate_pct"], m["p9_median"])
     m["gap"] = round(gap, 2)
     m["expected_gap"] = round(expected, 2)
     # The discount restated in dollars, which is the only form that answers
