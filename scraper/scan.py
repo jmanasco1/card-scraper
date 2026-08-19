@@ -263,12 +263,24 @@ def main():
 
 
 FIELDS = [
-    "score", "discount_pct", "confidence", "year", "set", "card", "number", "parallel",
+    "is_finding", "dislocation_pct", "score", "confidence",
+    "year", "set", "card", "number", "parallel",
     "total_pop", "gem_pop", "gem_rate_pct",
-    "p9_median", "p9_sales", "p10_median", "p10_sales",
-    "gap", "expected_gap", "value_ratio", "liquidity",
-    "ebay_url_10", "ebay_url_9", "url",
+    "p10_was", "p10_now", "p10_change_pct", "p10_sales",
+    "p9_was", "p9_now", "p9_change_pct", "p9_sales",
+    "liquidity", "ebay_url_10", "ebay_url_9", "url",
 ]
+
+
+def flatten_trends(rows):
+    """Lift the nested trend dicts into flat columns for CSV."""
+    for r in rows:
+        for pref in ("p10", "p9"):
+            t = r.get(f"{pref}_trend") or {}
+            r[f"{pref}_was"] = t.get("older_median")
+            r[f"{pref}_now"] = t.get("recent_median")
+            r[f"{pref}_change_pct"] = t.get("change_pct")
+    return rows
 
 
 def write_outputs(sport, ranked, model, stats, uni_report, problem=None, findings=0):
@@ -293,49 +305,56 @@ def write_outputs(sport, ranked, model, stats, uni_report, problem=None, finding
     with open(RESULTS / f"latest_{sport}.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
         w.writeheader()
-        for r in ranked:
+        for r in flatten_trends(list(ranked)):
             w.writerow(r)
 
     md = [f"# GemRate Value Scan — {sport.title()} — {stamp}\n"]
     md.append(
-        "Ranks PSA 10s by how far **below** the cohort's own pricing of scarcity "
-        "they trade. `gap` is the actual PSA 10 / PSA 9 price ratio; `fair` is what "
-        "this pool pays for that gem rate. A discount means the 10 is cheap for how "
-        "hard it is to pull.\n"
+        "Every figure is an observed sold price. Each grade shows what the card "
+        "used to fetch, what it fetches now, and how many sales are behind each. "
+        "The last column is the difference between the two moves — a PSA 10 "
+        "falling while its own PSA 9 holds is dislocated against itself. "
+        "★ marks a card that cleared the flag threshold.\n"
     )
     if stats:
         md.append(
-            f"Cohort: {stats['priced']} cards priced at both grades, median year "
-            f"{stats.get('median_year')}, median population {stats.get('median_pop'):,}, "
-            f"median 10/9 ratio {stats['median_gap']}×. "
-            f"Curve fit R² {model['r_squared']:.2f}"
-            + (f", slope {model['slope']:.2f}.\n" if model["kind"] == "loglog" else ".\n")
+            f"{stats['priced']} cards priced at both grades, median year "
+            f"{stats.get('median_year')}, median population "
+            f"{stats.get('median_pop', 0):,}.\n"
         )
-    if model["r_squared"] < 0.25:
+    if findings == 0 and ranked:
         md.append(
-            "> **Weak fit.** This pool doesn't price scarcity consistently, so the "
-            "discounts below are noisy. Price more cards (`--limit`) before trusting them.\n"
+            "> No card's PSA 10 fell far enough against its own PSA 9 to flag. "
+            "The prices below are still real — sort by the last column to see "
+            "which came closest.\n"
         )
     md.append(
-        "\n| # | Card | Year | Set | Pop | Gem % | PSA 9 | PSA 10 | Gap | Fair | Disc. | Conf. | Edge | Check |"
+        "\n| # | Card | Year | Set | Pop | Gem % | PSA 10 | PSA 9 | 10 vs 9 | Trust | Check |"
     )
-    md.append("|---|------|------|-----|-----|-------|-------|--------|-----|------|-------|-------|------|-------|")
+    md.append("|---|------|------|-----|-----|-------|--------|-------|---------|-------|-------|")
+
+    def move(r, pref):
+        t = r.get(f"{pref}_trend")
+        if not t:
+            return "—"
+        return (f"${t['older_median']:,.0f} → ${t['recent_median']:,.0f} "
+                f"({t['change_pct']:+.0f}%, n={t['older_n']}+{t['recent_n']})")
+
     for i, r in enumerate(ranked[:25], 1):
+        mark = "★" if r.get("is_finding") else str(i)
         md.append(
-            f"| {i} | {r['card']} #{r['number']} | {r['year']} | {r['set']} "
+            f"| {mark} | {r['card']} #{r['number']} | {r['year']} | {r['set']} "
             f"| {r['total_pop']:,} | {r['gem_rate_pct']}% "
-            f"| ${r['p9_median']:,.0f} ({r['p9_sales']}) "
-            f"| ${r['p10_median']:,.0f} ({r['p10_sales']}) "
-            f"| {r['gap']}× | {r['expected_gap']}× | {r['discount_pct']:+.0f}% "
-            f"| {r['confidence']} | {r['score']:+.1f} "
-            f"| [10]({r['ebay_url_10']}) · [9]({r['ebay_url_9']}) |"
+            f"| {move(r, 'p10')} | {move(r, 'p9')} "
+            f"| {(r.get('dislocation_pct') or 0):+.0f} pts "
+            f"| {r.get('confidence')} "
+            f"| [10]({r.get('ebay_url_10','')}) · [9]({r.get('ebay_url_9','')}) |"
         )
     md.append(
-        "\n**Read it like this:** a high edge means the market is charging little "
-        "for a 10 that is genuinely hard to get. Verify every one by hand before "
-        "buying — click the PSA 9 and PSA 10 links and check the comps are really "
-        "the same card. Thin comps (low counts) are the usual reason a discount "
-        "turns out to be a mirage.\n"
+        "\n**A dislocation is a question, not an answer.** The 10 falling behind "
+        "its own 9 can mean the 10 is cheap, or that several 10s hit the market "
+        "at once. Open both eBay links and check the comps are the same card "
+        "before acting on any row.\n"
     )
     (RESULTS / f"summary_{sport}.md").write_text("\n".join(md) + "\n")
 

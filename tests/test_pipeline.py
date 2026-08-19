@@ -597,3 +597,72 @@ class TestAlwaysShowMeasuredCards(unittest.TestCase):
                         "measured_but_no_dislocation": 53}, False)
         self.assertIn("none showed", msg)
         self.assertNotIn("rejected", msg)
+
+
+class TestOutputsActuallyWrite(unittest.TestCase):
+    """write_outputs crashed in production on a field the signal rewrite had
+    removed, because nothing ever called it. Rendering all three files is the
+    cheapest possible check and it was missing."""
+
+    def _rows(self, n=12, seed=17):
+        rng = random.Random(seed)
+        cards = [m for c in simulate_universe(n, seed=seed) if (m := analyze(c, FILTERS))]
+        for m in cards:
+            simulate_prices(m, rng, sales=15)
+            simulate_trend(m, p10_move=rng.uniform(-0.3, 0.05), p9_move=0.0)
+            m["ebay_url_10"] = comps.build_ebay_url(m, 10)
+            m["ebay_url_9"] = comps.build_ebay_url(m, 9)
+        return cards
+
+    def _write(self, rows, findings):
+        import tempfile, pathlib
+        from scraper import scan as S
+        from scraper.ranking import cohort_stats
+        old = S.RESULTS
+        with tempfile.TemporaryDirectory() as d:
+            S.RESULTS = pathlib.Path(d)
+            try:
+                model = fit_cohort(rows)
+                S.write_outputs("basketball", rows, model, cohort_stats(rows),
+                                {"year_param_honored": True}, findings=findings)
+                return {p.name: p.read_text() for p in S.RESULTS.iterdir()}
+            finally:
+                S.RESULTS = old
+
+    def test_writes_all_three_files_with_no_findings(self):
+        rows = measured_rows = self._rows()
+        for m in rows:
+            m["is_finding"] = False
+            m["dislocation_pct"] = -5.0
+            m["confidence"] = 0.8
+            m["score"] = 4.0
+        out = self._write(measured_rows, findings=0)
+        self.assertIn("report_basketball.html", out)
+        self.assertIn("latest_basketball.csv", out)
+        self.assertIn("summary_basketball.md", out)
+        self.assertIn("No card's PSA 10 fell far enough", out["summary_basketball.md"])
+
+    def test_markdown_and_csv_carry_the_real_prices(self):
+        rows = self._rows()
+        for m in rows:
+            m["is_finding"] = False
+            m["dislocation_pct"] = -20.0
+            m["confidence"] = 0.9
+            m["score"] = 18.0
+        out = self._write(rows, findings=0)
+        md, csv_text = out["summary_basketball.md"], out["latest_basketball.csv"]
+        first = rows[0]
+        self.assertIn(first["card"], md)
+        self.assertIn("→", md, "markdown should show the price move")
+        self.assertIn("p10_was", csv_text)
+        self.assertIn("p10_change_pct", csv_text)
+        self.assertNotIn("expected_gap", csv_text)
+
+    def test_findings_are_starred(self):
+        rows = self._rows()
+        for m in rows:
+            m.update({"is_finding": False, "dislocation_pct": -5.0,
+                      "confidence": 0.8, "score": 4.0})
+        rows[0]["is_finding"] = True
+        out = self._write(rows, findings=1)
+        self.assertIn("★", out["summary_basketball.md"])

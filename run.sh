@@ -120,7 +120,10 @@ echo
 if ! python -m scraper.scan "$@"; then
   cat <<'MSG'
 
-The scan did not finish. The two usual causes:
+The scan did not finish. Read the output above — it says which of these it was:
+
+  * A Python traceback — a bug in this project, not your setup. The last line
+    names the failure. Send it on rather than changing anything here.
 
   * "No cards found" — Cloudflare blocked the page. This has to run on a home
     internet connection; a VPN or corporate network can look like a datacenter
@@ -128,8 +131,6 @@ The scan did not finish. The two usual causes:
 
   * A browser error — install Google Chrome from https://www.google.com/chrome/
     and re-run this script.
-
-Re-run with --debug to see exactly where it stopped.
 MSG
   exit 1
 fi
