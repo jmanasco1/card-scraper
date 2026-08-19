@@ -1,32 +1,37 @@
 """
-Ranking: which cards look undervalued / about to move.
+Filtering, sampling, and the final score.
 
-Signal comes from three parts, normalized 0-1 across the candidate pool and
-weighted per config.json:
-
-  price_momentum      Recent eBay PSA-10 sale prices trending up vs. the older
-                      half of the window. This is the "market is repricing it"
-                      signal (from scraper/comps.py, via eBay — GemRate no
-                      longer publishes prices).
-  gem_rate_tightness  Low gem rate on a big population = scarce in gem grade
-                      and heavily traded. Scaled by log10(population).
-  sales_activity      How many recent comps we found — a busy card is a
-                      confirmed trend, not one odd auction.
-
-Cards with too few comps to judge momentum still rank on scarcity, just with a
-neutral momentum contribution.
+The previous version of this module ranked on population and gem rate, which
+between them encode "famous" and "old" and say nothing about price. This one
+ranks on measured underpricing from scraper/value.py, scaled by how much the
+underlying comps can be trusted.
 """
 
-import math
+import statistics
 
 
 def analyze(card, filters):
-    """Apply the population / gem-rate filters. Returns a metrics dict, or
-    None if the card doesn't qualify. Comp fields are filled in later."""
-    if card.total_pop < filters["min_total_population"]:
+    """Apply the universe filters. Returns a metrics dict, or None.
+
+    Note the population filter is now a *band*, not a floor. The floor keeps
+    out cards too thin to have a real market; the ceiling keeps out the
+    mega-population blue chips, which are the most heavily watched cards in the
+    hobby and therefore the least likely to be mispriced.
+    """
+    pop = card.total_pop
+    if pop < filters["min_total_population"]:
         return None
-    if not (0 < card.gem_rate_pct <= filters["max_gem_rate_pct"]):
+    if filters.get("max_total_population") and pop > filters["max_total_population"]:
         return None
+
+    rate = card.gem_rate_pct
+    # A wide gem-rate band is deliberate: the value model fits a curve of
+    # premium against scarcity, and it needs cards spread across the scarcity
+    # range to fit anything at all. Filtering to only-scarce cards would
+    # flatten the x-axis and make the fit meaningless.
+    if not (filters["min_gem_rate_pct"] <= rate <= filters["max_gem_rate_pct"]):
+        return None
+
     return {
         "set": card.set_name,
         "year": card.year,
@@ -34,45 +39,99 @@ def analyze(card, filters):
         "number": card.card_number,
         "parallel": card.parallel,
         "url": card.url,
-        "total_pop": card.total_pop,
+        "total_pop": pop,
         "gem_pop": card.gem_pop,
-        "gem_rate_pct": card.gem_rate_pct,
-        "recent_sales": 0,
-        "latest_comp": None,
-        "oldest_comp": None,
-        "momentum_pct": 0.0,
+        "gem_rate_pct": rate,
+        "p10_median": None, "p10_sales": 0, "p10_spread": None,
+        "p9_median": None, "p9_sales": 0, "p9_spread": None,
+        "gap": None, "expected_gap": None, "value_ratio": None, "discount_pct": None,
     }
 
 
-def rank(candidates, weights, max_gem_rate):
-    """Normalize the components across the pool and sort by score."""
-    if not candidates:
+def select_for_pricing(candidates, limit):
+    """Choose which candidates to spend eBay lookups on.
+
+    Every lookup is slow and may cost a captcha, so we can only price a few
+    dozen per run. Picking the "most promising" by any single metric would be a
+    mistake: the model fits premium against gem rate, so a sample bunched at one
+    end of the gem-rate range has no x-variation and yields a garbage curve.
+
+    So we stratify — sort by gem rate, cut into `limit` even buckets, and take
+    the median-population card from each. That spans the scarcity range while
+    favouring cards with enough population to have a real market.
+    """
+    if limit >= len(candidates):
+        return list(candidates)
+    if limit <= 0:
         return []
 
-    def norm(values):
-        lo, hi = min(values), max(values)
-        if hi == lo:
-            return [0.5] * len(values)
-        return [(v - lo) / (hi - lo) for v in values]
+    ordered = sorted(candidates, key=lambda m: m["gem_rate_pct"])
+    picked = []
+    n = len(ordered)
+    for i in range(limit):
+        lo = (i * n) // limit
+        hi = max(lo + 1, ((i + 1) * n) // limit)
+        bucket = ordered[lo:hi]
+        bucket.sort(key=lambda m: m["total_pop"])
+        picked.append(bucket[len(bucket) // 2])
+    return picked
 
-    momentum = norm([c.get("momentum_pct", 0.0) for c in candidates])
 
-    tight_raw = [
-        (1.0 - c["gem_rate_pct"] / max_gem_rate) * math.log10(max(c["total_pop"], 10))
-        for c in candidates
-    ]
-    tightness = norm(tight_raw)
-    activity = norm([c.get("recent_sales", 0) for c in candidates])
+def liquidity(m):
+    """Total observed sales across both grades — how easily you could actually
+    transact. A big paper discount on a card that sells twice a year isn't an
+    opportunity you can act on."""
+    return m.get("p10_sales", 0) + m.get("p9_sales", 0)
 
-    w_mom = weights.get("price_momentum", 0.5)
-    w_tight = weights.get("gem_rate_tightness", 0.3)
-    w_act = weights.get("sales_activity", 0.2)
-    total_w = (w_mom + w_tight + w_act) or 1.0
 
-    for i, c in enumerate(candidates):
-        c["score"] = round(
-            (w_mom * momentum[i] + w_tight * tightness[i] + w_act * activity[i]) / total_w,
-            4,
-        )
+def score(m, conf, weights):
+    """Expected edge, in percentage points of underpricing.
 
-    return sorted(candidates, key=lambda c: c["score"], reverse=True)
+    Kept deliberately interpretable: a score of 30 means "trades about 30%
+    below what this cohort pays for that level of scarcity, discounted for how
+    trustworthy the comps are". Negative means richly priced.
+    """
+    if m.get("discount_pct") is None:
+        return None
+    edge = m["discount_pct"] * conf
+    # A small liquidity kicker so that, between two similar discounts, the one
+    # you can actually buy and resell ranks higher. Applied only to positive
+    # edges: being easy to trade doesn't make an overpriced card less
+    # overpriced, and scaling a negative edge by it would rank the worst cards
+    # up rather than down.
+    if edge > 0:
+        liq_w = weights.get("liquidity", 0.15)
+        edge *= 1.0 + min(1.0, liquidity(m) / 40.0) * liq_w
+    return round(edge, 2)
+
+
+def rank(candidates, weights, min_sales):
+    """Score every priced candidate and sort by edge, best first."""
+    from .value import confidence
+
+    scored = []
+    for m in candidates:
+        conf = confidence(m, min_sales)
+        m["confidence"] = conf
+        m["liquidity"] = liquidity(m)
+        m["score"] = score(m, conf, weights)
+        if m["score"] is not None and conf > 0:
+            scored.append(m)
+
+    scored.sort(key=lambda m: m["score"], reverse=True)
+    return scored
+
+
+def cohort_stats(candidates):
+    """Descriptive numbers for the run header, so the output says what pool the
+    discounts are measured against."""
+    priced = [m for m in candidates if m.get("gap")]
+    if not priced:
+        return {}
+    years = [int(m["year"]) for m in priced if str(m["year"]).isdigit()]
+    return {
+        "priced": len(priced),
+        "median_gap": round(statistics.median(m["gap"] for m in priced), 2),
+        "median_year": int(statistics.median(years)) if years else None,
+        "median_pop": int(statistics.median(m["total_pop"] for m in priced)),
+    }

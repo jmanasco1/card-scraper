@@ -26,6 +26,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlencode
 
 from playwright.sync_api import sync_playwright
 
@@ -235,26 +236,94 @@ class GemRateClient:
             print(f"  [debug] GET {url} -> {status} | title: {self.page.title()!r}{note}")
         return cleared
 
-    def fetch_top_cards(self, category, grader="psa"):
-        """Load the Top Cards report for a category and return [CardRow].
+    def fetch_report(self, category, grader="psa", **params):
+        """Load the Top Cards report for a category (plus any extra query
+        params) and return [CardRow].
 
-        `category` is a GemRate slug like 'basketball-cards'. Returns every
-        card in the report (typically the top ~100 most-graded, all-time).
+        Extra params are passed straight through to the URL. Which ones the
+        site actually honors is discovered at runtime by `walk_universe` —
+        see the note there.
         """
-        url = f"{BASE}/top-cards?grader={grader}&category={category}"
+        query = {"grader": grader, "category": category}
+        query.update({k: v for k, v in params.items() if v not in (None, "")})
+        url = f"{BASE}/top-cards?" + urlencode(query)
         self._goto(url)
-        html = self.page.content()
-        rows = extract_rowdata(html)
+        rows = extract_rowdata(self.page.content())
         if self.debug:
-            print(f"  [debug] RowData rows extracted: {len(rows)}")
+            print(f"  [debug] RowData rows extracted: {len(rows)} from {url}")
             if not rows:
                 print("  [debug] no RowData found — page structure may have changed")
-        cards = []
-        for item in rows:
-            row = card_from_row(item)
-            if row:
-                cards.append(row)
-        return cards
+        return [row for item in rows if (row := card_from_row(item))]
+
+    def fetch_top_cards(self, category, grader="psa"):
+        """The unfiltered Top Cards report — the ~100 most-graded cards of all
+        time. Kept for the `--universe top` mode; note that ranking this pool
+        is a fame contest, not a value screen."""
+        return self.fetch_report(category, grader)
+
+    def walk_universe(self, category, grader="psa", years=(), debug=False):
+        """Build the widest card pool the site will give us.
+
+        The Top Cards report returns roughly the 100 most-graded cards for
+        whatever slice you ask for. Asking only for a category therefore yields
+        the all-time blue chips and nothing else — which is exactly why the old
+        scan could only ever return famous vintage.
+
+        Requesting the report per *year* should slice the same report into
+        per-year top-100s, reaching cards that the all-time list buries. We
+        can't confirm from here whether the site honors a `year` param (its
+        endpoints are undocumented and Cloudflare blocks datacenter IPs, so
+        this is unverifiable outside a real local run), so instead of trusting
+        it we measure it: fetch the baseline, then fetch one year and check
+        whether the rows actually differ. If the param is ignored we say so and
+        stop, rather than burning forty page loads on identical responses.
+
+        Returns (cards, report) where report describes what worked.
+        """
+        seen = {}
+        report = {"year_param_honored": None, "slices": []}
+
+        def absorb(label, rows):
+            new_count = 0
+            for c in rows:
+                key = (c.year, c.set_name, c.card_name, c.card_number, c.parallel)
+                if key not in seen:
+                    seen[key] = c
+                    new_count += 1
+            report["slices"].append({"slice": label, "rows": len(rows), "new": new_count})
+            if debug or new_count:
+                print(f"  {label}: {len(rows)} rows, {new_count} new (pool now {len(seen)})")
+            return new_count
+
+        base = self.fetch_report(category, grader)
+        base_keys = {(c.year, c.set_name, c.card_name, c.card_number, c.parallel) for c in base}
+        absorb("all-time", base)
+
+        if not years:
+            return list(seen.values()), report
+
+        # Probe one year before committing to the full sweep.
+        probe_year = years[0]
+        probe = self.fetch_report(category, grader, year=probe_year)
+        probe_keys = {(c.year, c.set_name, c.card_name, c.card_number, c.parallel) for c in probe}
+
+        if not probe or probe_keys == base_keys:
+            report["year_param_honored"] = False
+            print(
+                f"\n  !! /top-cards ignored ?year={probe_year} (returned the same "
+                f"{len(probe)} rows as the unfiltered report).\n"
+                "     The universe is capped at the all-time top cards, so results will\n"
+                "     still skew to blue chips. Run `python -m scraper.recon` to dump the\n"
+                "     site's real navigation and report back what set/year URLs exist."
+            )
+            return list(seen.values()), report
+
+        report["year_param_honored"] = True
+        absorb(f"year={probe_year}", probe)
+        for y in years[1:]:
+            absorb(f"year={y}", self.fetch_report(category, grader, year=y))
+
+        return list(seen.values()), report
 
 
 # ---------------------------------------------------------------------- #

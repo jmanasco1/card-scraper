@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# eBay price cache (local, regenerated per run)
+results/.price_cache.json

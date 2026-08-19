@@ -4,22 +4,26 @@
 
   "filters": {
     "min_total_population": 300,
-    "max_gem_rate_pct": 20,
-    "min_price_usd": 20,
-    "min_recent_sales": 3,
-    "recent_sales_window_days": 60
+    "max_total_population": 20000,
+    "min_gem_rate_pct": 0.1,
+    "max_gem_rate_pct": 60,
+    "min_sales_per_grade": 3
   },
 
   "ranking_weights": {
-    "price_momentum": 0.5,
-    "gem_rate_tightness": 0.3,
-    "sales_activity": 0.2
+    "liquidity": 0.15
   },
 
   "scan_limits": {
-    "max_comp_lookups": 40,
+    "max_price_lookups": 40,
     "request_delay_seconds": 1.5,
-    "max_results": 50
+    "max_results": 50,
+    "cache_ttl_days": 7
+  },
+
+  "universe": {
+    "year_from": 1990,
+    "year_to": 2023
   },
 
   "category_map": {

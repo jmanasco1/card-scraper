@@ -1,3 +1,18 @@
+# Manual-dispatch only.
+#
+# The weekly schedule was removed deliberately. This scan cannot complete on a
+# GitHub-hosted runner without help on two separate fronts:
+#
+#   1. gemrate.com is behind Cloudflare, which blocks Azure/GitHub datacenter
+#      IPs outright — verified with real Chrome, xvfb and TLS impersonation.
+#      Needs the GEMRATE_PROXY secret (residential/mobile egress).
+#   2. Pricing cards means eBay sold-listing searches, and eBay serves captchas
+#      to automation. The scan pauses for a human to solve them, which no
+#      unattended CI run can do.
+#
+# So the scheduled run could only ever fail, and did so every Monday. Run the
+# scan locally instead (see README). This workflow is kept for the case where
+# a proxy is configured and you want a universe-only refresh.
 name: GemRate Scan
 
 on:
@@ -8,25 +23,15 @@ on:
         required: true
         type: choice
         default: basketball
-        options:
-          - basketball
-          - baseball
-          - football
-          - hockey
-          - soccer
-          - tcg
-      reset:
-        description: "Ignore checkpoint and rescan from scratch"
+        options: [basketball, baseball, football, hockey, soccer, tcg]
+      universe:
+        description: "Card pool: wide (long tail) or top (all-time top cards)"
         required: false
-        type: boolean
-        default: false
-      max_sets:
-        description: "Override max sets per run (blank = config.json value)"
-        required: false
-        type: string
-        default: ""
-      max_cards:
-        description: "Override max card pages per run (blank = config.json value)"
+        type: choice
+        default: wide
+        options: [wide, top]
+      limit:
+        description: "How many cards to price on eBay (blank = config.json)"
         required: false
         type: string
         default: ""
@@ -35,9 +40,6 @@ on:
         required: false
         type: boolean
         default: false
-  schedule:
-    # Weekly, Monday 13:00 UTC (uses default_sport from config.json)
-    - cron: "0 13 * * 1"
 
 permissions:
   contents: write
@@ -49,10 +51,8 @@ jobs:
     env:
       # Headful Chrome under xvfb — headless mode trips Cloudflare's bot check
       GEMRATE_HEADFUL: "1"
-      # gemrate.com is behind Cloudflare, which blocks GitHub's datacenter IPs
-      # outright. Set a residential/mobile proxy URL (or scraping-API endpoint)
-      # in the repo secret GEMRATE_PROXY to let the scan reach the site.
-      # Format: http://user:pass@host:port  (empty = direct, will be blocked)
+      # Required: without a residential proxy Cloudflare blocks this runner.
+      # Format: http://user:pass@host:port
       GEMRATE_PROXY: ${{ secrets.GEMRATE_PROXY }}
     steps:
       - uses: actions/checkout@v4
@@ -64,9 +64,15 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          # Real Google Chrome passes Cloudflare far better than bundled Chromium
           playwright install --with-deps chrome
           playwright install --with-deps chromium
+
+      - name: Warn if no proxy is configured
+        if: ${{ env.GEMRATE_PROXY == '' }}
+        run: |
+          echo "::warning::GEMRATE_PROXY is not set. Cloudflare blocks GitHub's" \
+               "datacenter IPs, so this run will almost certainly find no cards." \
+               "Run the scan locally instead, or add the secret."
 
       - name: Cloudflare transport probe (debug only)
         if: ${{ github.event.inputs.debug == 'true' }}
@@ -78,17 +84,11 @@ jobs:
 
       - name: Run scan
         run: |
-          SPORT="${{ github.event.inputs.sport }}"
-          ARGS=""
-          if [ "${{ github.event.inputs.reset }}" = "true" ]; then ARGS="$ARGS --reset"; fi
+          ARGS="--sport ${{ github.event.inputs.sport }}"
+          ARGS="$ARGS --universe ${{ github.event.inputs.universe }}"
           if [ "${{ github.event.inputs.debug }}" = "true" ]; then ARGS="$ARGS --debug"; fi
-          if [ -n "${{ github.event.inputs.max_sets }}" ]; then ARGS="$ARGS --max-sets ${{ github.event.inputs.max_sets }}"; fi
-          if [ -n "${{ github.event.inputs.max_cards }}" ]; then ARGS="$ARGS --max-cards ${{ github.event.inputs.max_cards }}"; fi
-          if [ -n "$SPORT" ]; then
-            xvfb-run -a python -m scraper.scan --sport "$SPORT" $ARGS
-          else
-            xvfb-run -a python -m scraper.scan $ARGS
-          fi
+          if [ -n "${{ github.event.inputs.limit }}" ]; then ARGS="$ARGS --limit ${{ github.event.inputs.limit }}"; fi
+          xvfb-run -a python -m scraper.scan $ARGS
 
       - name: Commit results
         run: |

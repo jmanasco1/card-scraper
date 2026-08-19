@@ -1,92 +1,150 @@
-# GemRate Scanner
+# GemRate Value Scanner
 
-Finds cards with **high population + low gem rate** — heavily graded cards that are hard to pull in a gem grade.
+Finds PSA 10s that trade **below what their scarcity is worth** — cards where
+the market isn't charging much for a gem that's genuinely hard to pull.
 
-> **Note:** GemRate rebuilt their site and no longer publishes recent sale prices (those moved to their CardLadder integration). The original "price momentum" signal isn't available from GemRate anymore, so this tool ranks on population + gem-rate scarcity. Treat the output as a shortlist to verify manually (eBay / CardLadder solds), not a buy list.
+## What changed, and why
 
-## How it works
+The first version of this tool ranked cards on population + gem rate. That
+sounds like a scarcity screen, but it isn't one:
 
-1. Load GemRate's **Top Cards** report `/top-cards?grader=psa&category=<sport>` in a real browser (required — the site is behind Cloudflare) and pull the dataset embedded in the page (`var RowData = JSON.parse(...)`) — the top ~100 most-graded cards, each with population + gem count.
-2. **Filter:** keep cards with population ≥ min and gem rate ≤ max, pre-rank by scarcity.
-3. **Comps:** each result gets a one-click **eBay "sold listings" link** so you can check recent prices by hand. Optionally (`--comps`) the tool auto-scrapes eBay PSA-10 solds and computes price momentum — but eBay throws captchas at automation, so that mode needs you to solve them in the visible browser. For hands-off automated momentum, use CardLadder (paid) — every GemRate card maps to it.
-4. **Rank:** price momentum (when comps are available) + gem-rate scarcity + sales activity. Weights are in `config.json`.
+- **Population is a fame metric.** The most-graded cards are the most famous
+  ones, because everyone owns them and everyone grades them.
+- **A low gem rate mostly means "old."** 1980s cardboard has bad centering and
+  print quality, so vintage always gems under 2%.
+- The scoring formula multiplied by `log10(population)`, so it actively
+  rewarded being famous.
 
-Results land in `results/` as CSV, JSON, and a markdown summary table (with the eBay links).
+The result was a list of Michael Jordan and Larry Bird rookies — the most
+watched, most liquid, most efficiently priced cards in the hobby. Exactly where
+inefficiency *isn't*. Worse, no card in that run had any price attached, so 70%
+of the score was a constant and the ranking was close to noise.
 
-### On sale prices / "undervalued"
+This version measures something that can actually be mispriced.
 
-GemRate removed sale prices from its site (moved to its CardLadder integration), so the price signal has to come from elsewhere. eBay is the free source but actively blocks scraping with captchas — this is the genuinely hard part of the domain and why paid tools exist. The default run therefore hands you eBay sold-search links to eyeball; `--comps` attempts automation with manual captcha-solving.
+## The signal: the grade gap
 
-## Setup
+For any card, the market pays a premium for the PSA 10 over the PSA 9:
 
-1. Go to **Actions → GemRate Scan → Run workflow** — pick your sport from the dropdown.
-2. **Important:** GitHub's servers are blocked by GemRate's Cloudflare protection (see below), so the Actions run needs a `GEMRATE_PROXY` secret. To run without a proxy, run it locally instead (see "Running locally").
-3. Results are committed back to the repo under `results/`.
+```
+gap = median(PSA 10 solds) / median(PSA 9 solds)
+```
 
-The weekly scheduled run (Monday) uses `default_sport` in `config.json`.
+That premium *should* scale with how hard the 10 is to get. A card that gems 2%
+of the time has a genuinely scarce 10 and should trade at a fat multiple; a card
+that gems 40% of the time should not.
 
-## Running locally
+Rather than assume the relationship, the scanner fits it from the cards it
+priced this run:
 
-A normal home internet connection clears Cloudflare on its own, so local runs need no proxy:
+```
+log(gap) = a + b · log(100 / gem_rate)
+```
+
+then compares each card to the curve:
+
+```
+value_ratio = actual_gap / expected_gap
+```
+
+Below 1 means the 10 trades under what this pool pays for that level of
+scarcity — the 10 is cheap for how hard it is. That's the finding.
+
+Two properties matter:
+
+- **It's cohort-relative.** Every card is judged against how this particular
+  pool prices scarcity, so nothing biases it toward old cards.
+- **It's price-anchored.** A card cannot rank without real sold prices on both
+  sides, so the score can never collapse into a constant the way the old one
+  did.
+
+The curve is fitted twice — once on everything, then again after dropping the
+worst-fitting 20% — so the outliers being hunted don't set the standard they're
+judged against.
+
+## Running it
+
+**Run this locally.** It cannot work on GitHub Actions: Cloudflare blocks
+datacenter IPs from gemrate.com, and eBay serves captchas to automation that a
+human has to clear. Both are fine on a home connection with a visible browser.
 
 ```bash
 pip install -r requirements.txt
 playwright install chrome
-# Windows: set GEMRATE_HEADFUL=1     (macOS/Linux: export GEMRATE_HEADFUL=1)
+
+# Windows:      set GEMRATE_HEADFUL=1
+# macOS/Linux:  export GEMRATE_HEADFUL=1
 python -m scraper.scan --sport basketball --debug
-# add --comps to auto-scrape eBay momentum (you'll solve captchas in the browser)
 ```
 
-Then look in `results/` for `latest_basketball.csv` and `summary_basketball.md`. Each row has an eBay sold-listings link — click it to see recent PSA-10 sale prices for that card.
+The run will pause and prompt you when eBay throws a captcha — solve it in the
+Chrome window and it continues. Prices are cached in
+`results/.price_cache.json` for a week, so a re-run with tweaked filters
+doesn't make you solve them all again.
 
-## Tuning
+Read `results/summary_basketball.md` first. Every row links to the PSA 9 and
+PSA 10 sold searches the score was built from.
 
-Everything lives in `config.json`:
+### Options
 
-- `filters` — `min_total_population` (300) and `max_gem_rate_pct` (20). (`min_price_usd` / recent-sales filters are legacy and unused now that sale prices aren't available.)
-- `ranking_weights` — `gem_rate_tightness` and `sales_activity` (used as a volume weight); `price_momentum` is folded into tightness for backward compatibility.
-- `scan_limits` — `request_delay_seconds`, `max_results` (per-set / per-card limits are legacy no-ops).
+| Flag | Meaning |
+|------|---------|
+| `--sport` | basketball, baseball, football, hockey, soccer, tcg |
+| `--universe wide` | (default) sweep per-year reports to reach the long tail |
+| `--universe top` | the old all-time top-cards pool — a fame contest, kept for comparison |
+| `--limit N` | how many cards to price on eBay this run (default 40) |
+| `--debug` | log page status, row counts and per-card comp counts |
 
-Too many results? Tighten filters. Too few? Loosen them.
+## Reading the output
 
-## First-run reality check
+| Column | Meaning |
+|--------|---------|
+| `gap` | actual PSA 10 / PSA 9 price ratio |
+| `fair` | what this cohort pays for that gem rate |
+| `Disc.` | how far below fair the 10 trades — positive is cheap |
+| `Conf.` | 0–1, how much comp depth backs the number |
+| `Edge` | discount × confidence, plus a small liquidity kicker |
 
-GemRate is a JavaScript app and doesn't document its internal endpoints. The scraper handles this two ways:
+**Verify every hit by hand.** Click both eBay links and check the comps are
+really the same card. Thin comps are the usual reason a discount turns out to
+be a mirage, which is what `Conf.` is there to warn you about. A low `R²` in the
+run header means the pool prices scarcity inconsistently and the whole set of
+discounts is noisy — price more cards with `--limit` before trusting it.
 
-- **JSON interception** (preferred): captures the structured API responses the site loads and parses them with tolerant key-matching.
-- **DOM fallback**: parses rendered tables if no usable JSON appears.
+## Known limits
 
-Run locally to watch it work (a residential IP passes Cloudflare automatically):
+- **The universe may still be capped.** GemRate's endpoints are undocumented.
+  The scanner asks `/top-cards` for per-year slices to reach beyond the ~100
+  all-time blue chips, and it *measures at runtime* whether the site honors
+  that — if the per-year request comes back identical to the unfiltered one, it
+  says so and stops rather than burning page loads. If that happens, run
+  `python -m scraper.recon` and the real set/year URLs can be wired in.
+- **eBay title matching is strict but not perfect.** Comps must carry the exact
+  grade, the right year and the right card number, and lots/reprints/customs
+  are dropped. Some mismatches will still get through, which is what the
+  dispersion penalty in the confidence score is guarding against.
+- **This is a shortlist, not a buy list.** It tells you where to look, not what
+  to buy.
+- **No pop-velocity signal yet.** Gem rate is a snapshot. A card whose PSA 10
+  population is climbing fast has expanding supply and should be getting
+  cheaper — the natural next signal, and it needs snapshots accumulated over
+  time.
+
+## Tests
 
 ```bash
-pip install -r requirements.txt
-playwright install chrome chromium
-python -m scraper.scan --sport basketball --max-sets 2 --debug
+python -m unittest discover -s tests -v
 ```
 
-## ⚠️ Cloudflare + GitHub Actions: a proxy is required
+The live path can't be exercised in CI, so the pipeline is tested against a
+simulated card universe and a simulated eBay: the tests plant underpriced cards
+and assert they surface above a fairly-priced high-population card, that the fit
+recovers the true scarcity slope, and that eBay title matching rejects wrong
+grades, wrong years, wrong card numbers, lots and reprints.
 
-gemrate.com sits behind **Cloudflare**, which serves a managed "Just a moment…" challenge. On a normal home/residential connection a real browser clears it automatically. **GitHub-hosted runners use Azure datacenter IPs, which Cloudflare blocks outright** — the challenge never clears no matter the browser or fingerprint.
+## Debug tooling
 
-This was verified end-to-end: real Google Chrome (headful under xvfb, with anti-fingerprint patches) and `curl_cffi` TLS-impersonation across five browser profiles all returned `403 Just a moment...` from the runner. The block is IP-reputation based, not a fingerprint problem, so no client-side trick fixes it.
-
-**To run the scan on GitHub Actions you must route it through a residential/mobile egress:**
-
-1. Get a residential or mobile proxy (Bright Data, Oxylabs, IPRoyal, …) or a scraping API that bundles residential IPs + Cloudflare solving (ScraperAPI, ZenRows, Scrapfly).
-2. Add the endpoint as a repo secret named **`GEMRATE_PROXY`** (Settings → Secrets and variables → Actions), format `http://user:pass@host:port`.
-3. Re-run the workflow. The scraper (`launch_browser`) and the probe both honor `GEMRATE_PROXY` automatically.
-
-Alternatives that avoid a proxy entirely:
-- Run the scan on a **self-hosted runner** on a residential connection, or
-- Run `python -m scraper.scan` on your **own machine** and commit `results/` yourself.
-
-### Debug tooling
-
-Run the workflow with **debug = true** (or pass `--debug` locally) to get:
-- `scraper/probe.py` — tests whether the current egress can reach the site via `curl_cffi` TLS impersonation (prints status per browser profile).
-- `scraper/recon.py` — loads pages in the real browser and dumps titles, links, and every captured JSON/XHR endpoint, so the parsers can be kept in sync once traffic actually gets through.
-
-## Notes
-
-- Delay between requests is 1.5s by default. Don't lower it aggressively — this relies on their free tier staying scrape-tolerant.
-- The free tier caps comps at ~5 recent sales, so momentum is a short-window signal. Treat results as a shortlist to verify manually (eBay solds), not a buy list.
+- `scraper/probe.py` — tests whether the current egress can reach gemrate.com
+  via TLS impersonation across five browser profiles.
+- `scraper/recon.py` — loads pages in a real browser and dumps titles, links and
+  every captured JSON/XHR endpoint, so the parsers can be kept in sync.

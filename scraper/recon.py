@@ -18,9 +18,13 @@ from .gemrate import default_headless, launch_browser, new_stealth_context, wait
 
 BASE = "https://www.gemrate.com"
 
+# The open question this tool exists to answer: how far past the ~100 all-time
+# top cards can we get? The scan probes ?year= at runtime; if that turns out to
+# be ignored, run this and look for real set/year navigation in the link dump.
 DEFAULT_URLS = [
     BASE,
     f"{BASE}/top-cards?grader=psa&category=basketball-cards",
+    f"{BASE}/top-cards?grader=psa&category=basketball-cards&year=2019",
 ]
 
 

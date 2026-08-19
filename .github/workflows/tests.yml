@@ -1,0 +1,22 @@
+# The scan itself can't run in CI (Cloudflare blocks datacenter IPs, and eBay
+# captchas need a human), but the scoring logic can and should be. These tests
+# drive the whole pipeline against a simulated card universe and a simulated
+# eBay, so a regression in the value model is caught here rather than in a run
+# you have to babysit.
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
