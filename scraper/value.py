@@ -89,9 +89,24 @@ def _r_squared(points, a, b):
     return max(0.0, 1.0 - ss_res / ss_tot)
 
 
+# A PSA 10 selling below its own PSA 9 is not a bargain, it is proof the two
+# searches found different cards. Real 10s carry a premium; the gap is >= 1 for
+# any genuinely matched pair. Anything under this is dropped as bad data rather
+# than scored, because the model would otherwise read it as a huge discount —
+# which is exactly how a $550 Larry Bird 10 came to be called $37,000 of value.
+MIN_CREDIBLE_GAP = 1.0
+
+
 def priceable(m):
-    """A card can be scored only if both grades have real sold prices."""
-    return bool(m.get("p10_median")) and bool(m.get("p9_median")) and m["p9_median"] > 0
+    """A card can be scored only if both grades have credible sold prices."""
+    if not (m.get("p10_median") and m.get("p9_median")):
+        return False
+    if m["p9_median"] <= 0:
+        return False
+    if m["p10_median"] / m["p9_median"] < MIN_CREDIBLE_GAP:
+        m["rejected"] = "PSA 10 priced below PSA 9 — the two searches matched different cards"
+        return False
+    return True
 
 
 def fit_cohort(candidates):
@@ -128,6 +143,19 @@ def fit_cohort(candidates):
         trimmed = sorted(points, key=lambda p: abs(p[1] - (a + b * p[0])))[:keep]
         a, b = _fit_loglog(trimmed)
 
+    # Never extrapolate past the scarcity range we actually observed. A 0.49%
+    # gem rate sits far outside the bulk of any pool, and an unclamped log-log
+    # fit happily predicts a 30x premium there — a number with no support in
+    # the data and enough leverage to invent tens of thousands of dollars of
+    # "fair value". Predictions outside the observed range are pinned to its
+    # edges instead.
+    xs = [p[0] for p in trimmed]
+    lo_x, hi_x = min(xs), max(xs)
+
+    def predict(rate):
+        x = min(max(_scarcity_x(rate), lo_x), hi_x)
+        return math.exp(a + b * x)
+
     return {
         "kind": "loglog",
         "n": len(priced),
@@ -138,7 +166,8 @@ def fit_cohort(candidates):
         # R^2 is reported over the trimmed core the curve was actually fitted
         # to; it describes how consistently the normal cards price scarcity.
         "r_squared": _r_squared(trimmed, a, b),
-        "predict": lambda rate: math.exp(a + b * _scarcity_x(rate)),
+        "x_range": (lo_x, hi_x),
+        "predict": predict,
     }
 
 

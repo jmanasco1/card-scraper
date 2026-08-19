@@ -129,8 +129,11 @@ class TestValueModel(unittest.TestCase):
         ranked = rank(cards, WEIGHTS, FILTERS["min_sales_per_grade"])
 
         self.assertIs(ranked[0], cheap, "underpriced card should rank first")
-        self.assertIs(ranked[-1], rich, "overpriced card should rank last")
-        self.assertGreater(cheap["score"] - rich["score"], 50.0)
+        # Overpriced cards are no longer listed at all: this is a list of things
+        # to buy, and a card the model calls expensive is not a finding.
+        self.assertNotIn(id(rich), [id(m) for m in ranked],
+                         "an overpriced card must not appear on a buy list")
+        self.assertGreater(cheap["score"], 50.0)
 
     def test_liquidity_never_promotes_an_overpriced_card(self):
         """A heavily-traded card that is richly priced must still rank below a
@@ -331,3 +334,49 @@ class TestCache(unittest.TestCase):
         msg = diagnose({}, False)
         self.assertIsNotNone(msg)
         self.assertIn("cache", msg)
+
+
+class TestBadCompRejection(unittest.TestCase):
+    """Everything here is drawn from the first run that returned real numbers,
+    which listed a $550 Larry Bird PSA 10 as $37,000 of value."""
+
+    def test_ten_cheaper_than_nine_is_rejected(self):
+        from scraper.value import priceable
+        # 1981 Topps Larry Bird: PSA 9 $1,180, PSA 10 $550. A 10 below its own 9
+        # means the two searches found different cards.
+        m = {"p9_median": 1180.0, "p10_median": 550.0}
+        self.assertFalse(priceable(m))
+        self.assertIn("different cards", m["rejected"])
+
+    def test_normal_premium_is_kept(self):
+        from scraper.value import priceable
+        self.assertTrue(priceable({"p9_median": 120.0, "p10_median": 600.0}))
+
+    def test_prediction_never_extrapolates_past_the_data(self):
+        """A 0.49% gem rate sits far outside any real pool; an unclamped fit
+        predicted a 31x premium there and invented $37k of fair value."""
+        rng = random.Random(21)
+        cards = [m for c in simulate_universe(120) if (m := analyze(c, FILTERS))]
+        for m in cards:
+            simulate_prices(m, rng)
+        model = fit_cohort(cards)
+        rates = [m["gem_rate_pct"] for m in cards]
+        widest = model["predict"](min(rates))
+        absurd = model["predict"](0.001)   # far beyond anything observed
+        self.assertLessEqual(absurd, widest + 1e-9,
+                             "prediction must be pinned at the observed edge")
+
+    def test_trivial_dollar_edges_are_not_findings(self):
+        """A $5 gap on a $15 card is noise, not an opportunity."""
+        rng = random.Random(4)
+        cards = [m for c in simulate_universe(60) if (m := analyze(c, FILTERS))]
+        for m in cards:
+            simulate_prices(m, rng)
+        penny = cards[0]
+        penny.update({"p9_median": 8.0, "p10_median": 15.0, "p9_sales": 50,
+                      "p10_sales": 53, "p9_spread": 0.3, "p10_spread": 0.3})
+        model = fit_cohort(cards)
+        for m in cards:
+            score_card(m, model)
+        ranked = rank(cards, WEIGHTS, 3, min_edge_usd=25.0)
+        self.assertNotIn(id(penny), [id(m) for m in ranked])

@@ -105,8 +105,14 @@ def score(m, conf, weights):
     return round(edge, 2)
 
 
-def rank(candidates, weights, min_sales):
-    """Score every priced candidate and sort by edge, best first."""
+def rank(candidates, weights, min_sales, min_edge_usd=25.0):
+    """Score every priced candidate and sort by edge, best first.
+
+    Only cards the model thinks are *cheap* are returned. An overpriced card is
+    not a finding on a list of things to buy, and a $5 gap on a $15 card is
+    noise dressed up as an opportunity — `min_edge_usd` sets the floor below
+    which a discount isn't worth anybody's time.
+    """
     from .value import confidence
 
     scored = []
@@ -115,8 +121,13 @@ def rank(candidates, weights, min_sales):
         m["confidence"] = conf
         m["liquidity"] = liquidity(m)
         m["score"] = score(m, conf, weights)
-        if m["score"] is not None and conf > 0:
-            scored.append(m)
+        if m["score"] is None or conf <= 0:
+            continue
+        if (m.get("discount_pct") or 0) <= 0:
+            continue
+        if (m.get("headroom_usd") or 0) < min_edge_usd:
+            continue
+        scored.append(m)
 
     scored.sort(key=lambda m: m["score"], reverse=True)
     return scored

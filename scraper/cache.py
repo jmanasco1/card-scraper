@@ -16,6 +16,12 @@ CACHE_PATH = Path(__file__).resolve().parent.parent / "results" / ".price_cache.
 _FIELDS = ("p10_median", "p10_sales", "p10_spread",
            "p9_median", "p9_sales", "p9_spread")
 
+# Bumped whenever a change to comp matching invalidates prices collected under
+# the old rules. Entries from an older version are ignored rather than reused,
+# so a fix to what counts as a comp actually takes effect instead of being
+# masked by cached results gathered before it.
+VERSION = 2
+
 
 def card_key(m):
     return "|".join(str(m.get(k, "")) for k in ("year", "set", "card", "number", "parallel"))
@@ -51,6 +57,8 @@ def get(cache, m, ttl_days):
         return False
     if time.time() - entry.get("ts", 0) > ttl_days * 86400:
         return False
+    if entry.get("v") != VERSION:
+        return False
     if not usable(entry):
         return False
     for f in _FIELDS:
@@ -66,5 +74,6 @@ def put(cache, m):
     if not usable(entry):
         return False
     entry["ts"] = time.time()
+    entry["v"] = VERSION
     cache[card_key(m)] = entry
     return True

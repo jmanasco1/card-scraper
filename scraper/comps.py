@@ -39,6 +39,10 @@ _JUNK = (
     "sticker only", "not psa", "no psa", "coin", "sealed box", "wax pack",
 )
 
+# Set-name words too generic to prove a listing is the right set.
+_SET_STOPWORDS = {"the", "of", "and", "series", "set", "cards", "card", "base",
+                  "update", "basketball", "baseball", "football", "hockey"}
+
 # Grades that must NOT appear when we're searching for a specific grade.
 _ALL_GRADES = ("psa 10", "psa 9", "psa 8", "psa 7", "psa 6", "psa 5",
                "bgs 10", "bgs 9.5", "bgs 9", "sgc 10", "sgc 9.5", "sgc 9")
@@ -96,6 +100,29 @@ def title_matches(title, metrics, grade, require_number=True):
     if want == "psa 9" and "psa 9.5" in t:
         return False
     if present != {want}:
+        return False
+
+    # --- the player has to actually be on the card -------------------------
+    #
+    # eBay's search is fuzzy: asking for one card returns plenty of other cards
+    # from the same set and era. Without this check any of them counted, which
+    # is how a $2 common was priced at $70 and how a PSA 10 came back cheaper
+    # than its own PSA 9 — they were simply different cards.
+    name_tokens = [w for w in re.findall(r"[a-z]+", (metrics.get("card") or "").lower())
+                   if len(w) > 1]
+    if name_tokens:
+        surname = name_tokens[-1]
+        if surname not in t:
+            return False
+        # A surname alone is too weak (Jordan, Johnson, Smith recur constantly),
+        # so for a normal "First Last" name demand another token too.
+        if len(name_tokens) > 1 and not any(w in t for w in name_tokens[:-1]):
+            return False
+
+    # --- and it has to be from the right set -------------------------------
+    set_tokens = [w for w in re.findall(r"[a-z]+", (metrics.get("set") or "").lower())
+                  if len(w) > 2 and w not in _SET_STOPWORDS]
+    if set_tokens and not any(w in t for w in set_tokens):
         return False
 
     year = str(metrics.get("year", "") or "").strip()

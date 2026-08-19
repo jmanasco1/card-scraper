@@ -184,7 +184,8 @@ def main():
         for m in targets:
             score_card(m, model)
 
-        ranked = rank(targets, cfg["ranking_weights"], filters["min_sales_per_grade"])
+        ranked = rank(targets, cfg["ranking_weights"], filters["min_sales_per_grade"],
+                      filters.get("min_edge_usd", 25))
         stats = cohort_stats(targets)
 
         print(f"\nFitted premium curve: {model['kind']}, "

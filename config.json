@@ -1,31 +1,28 @@
 {
   "default_sport": "basketball",
   "grader": "psa",
-
   "filters": {
     "min_total_population": 300,
     "max_total_population": 20000,
     "min_gem_rate_pct": 0.1,
     "max_gem_rate_pct": 60,
-    "min_sales_per_grade": 3
+    "min_sales_per_grade": 3,
+    "min_edge_usd": 25,
+    "min_psa10_price_usd": 40
   },
-
   "ranking_weights": {
     "liquidity": 0.15
   },
-
   "scan_limits": {
     "max_price_lookups": 40,
     "request_delay_seconds": 1.5,
     "max_results": 50,
     "cache_ttl_days": 7
   },
-
   "universe": {
     "year_from": 1990,
     "year_to": 2023
   },
-
   "category_map": {
     "basketball": "basketball-cards",
     "baseball": "baseball-cards",
