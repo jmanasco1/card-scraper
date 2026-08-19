@@ -93,8 +93,9 @@ Chrome window and it continues. Prices are cached in
 `results/.price_cache.json` for a week, so a re-run with tweaked filters
 doesn't make you solve them all again.
 
-Read `results/summary_basketball.md` first. Every row links to the PSA 9 and
-PSA 10 sold searches the score was built from.
+When it finishes, `run.sh` opens **`results/report_<sport>.html`** in your
+browser — a sortable table with both eBay searches one click from every row.
+The same data is written as CSV (for spreadsheets) and markdown (for GitHub).
 
 ### Options
 

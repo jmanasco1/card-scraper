@@ -27,6 +27,7 @@ from pathlib import Path
 
 from . import cache as cache_mod
 from . import comps as comps_mod
+from . import report as report_mod
 from .gemrate import GemRateClient
 from .ranking import analyze, cohort_stats, rank, select_for_pricing
 from .value import fit_cohort, score_card
@@ -157,7 +158,7 @@ def main():
         print(f"{len(ranked)} cards scoreable with comps at both grades.")
 
         write_outputs(sport, ranked[: limits["max_results"]], model, stats, uni_report)
-        print(f"\nDone. Results in results/ — start with summary_{sport}.md")
+        print(f"\nDone. Open the report:  results/report_{sport}.html")
     finally:
         client.close()
 
@@ -182,6 +183,12 @@ def write_outputs(sport, ranked, model, stats, uni_report):
         "universe": uni_report,
         "results": ranked,
     }, indent=2))
+
+    # The page people actually read. Written first so that even if a later
+    # writer trips, the human-facing output exists.
+    (RESULTS / f"report_{sport}.html").write_text(
+        report_mod.render(sport, ranked, model, stats, uni_report)
+    )
 
     with open(RESULTS / f"latest_{sport}.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")

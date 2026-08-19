@@ -115,11 +115,25 @@ MSG
   exit 1
 fi
 
-say "Done. Open the summary:"
 SPORT_ARG=""
 for i in "$@"; do
   if [ "${PREV:-}" = "--sport" ]; then SPORT_ARG="$i"; fi
   PREV="$i"
 done
 SPORT="${SPORT_ARG:-basketball}"
-echo "    open results/summary_${SPORT}.md"
+REPORT="results/report_${SPORT}.html"
+
+if [ -s "$REPORT" ]; then
+  say "Opening the report in your browser..."
+  # An .html file opens in the default browser rather than whatever editor
+  # happens to be registered for .md on this machine.
+  if command -v open >/dev/null 2>&1; then
+    open "$REPORT"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$REPORT"
+  fi
+  echo "    $REPORT"
+else
+  say "The scan finished but wrote no report."
+  echo "Nothing was scoreable — see the messages above."
+fi
