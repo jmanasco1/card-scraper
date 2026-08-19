@@ -8,7 +8,8 @@
     "max_gem_rate_pct": 60,
     "min_sales_per_grade": 3,
     "min_edge_usd": 25,
-    "min_psa10_price_usd": 40
+    "min_psa10_price_usd": 40,
+    "min_move_pct": 15
   },
   "ranking_weights": {
     "liquidity": 0.15

@@ -61,6 +61,20 @@ def simulate_prices(m, rng, mispricing=1.0, sales=12):
     m["p10_median"], m["p10_sales"], m["p10_spread"] = round(p9 * gap, 2), sales, 0.3
 
 
+def simulate_trend(m, p10_move=0.0, p9_move=0.0, n=12):
+    """Attach dated price history to a card: `*_move` is the fractional change
+    from its earlier sales to its recent ones."""
+    def trend(median, move):
+        older = median
+        recent = median * (1.0 + move)
+        return {"older_median": round(older, 2), "recent_median": round(recent, 2),
+                "older_n": n - max(2, n // 3), "recent_n": max(2, n // 3),
+                "change_pct": round(100.0 * move, 1),
+                "first": "2025-01-01", "last": "2025-06-01"}
+    m["p10_trend"] = trend(m["p10_median"], p10_move)
+    m["p9_trend"] = trend(m["p9_median"], p9_move)
+
+
 class TestValueModel(unittest.TestCase):
     def test_recovers_true_slope(self):
         rng = random.Random(3)
@@ -73,68 +87,63 @@ class TestValueModel(unittest.TestCase):
         self.assertAlmostEqual(model["slope"], TRUE_SLOPE, delta=0.12)
         self.assertGreater(model["r_squared"], 0.8)
 
-    def test_surfaces_planted_bargains_not_famous_cards(self):
+    def test_surfaces_dislocated_cards_not_famous_ones(self):
+        """The 10 falling while its own 9 holds is the finding. Population,
+        which the very first version of this tool ranked on, earns nothing."""
         rng = random.Random(5)
         cards = [m for c in simulate_universe() if (m := analyze(c, FILTERS))]
         for m in cards:
-            simulate_prices(m, rng)
+            simulate_prices(m, rng, sales=15)
+            simulate_trend(m, p10_move=rng.uniform(-0.04, 0.04),
+                           p9_move=rng.uniform(-0.04, 0.04))
 
-        # Plant three cards whose 10 trades at ~45% of fair value.
-        bargains = cards[:3]
-        for m in bargains:
-            simulate_prices(m, rng, mispricing=0.45, sales=15)
-        # And one hugely popular card priced exactly fairly — the sort of card
-        # the old pop-based ranking always put on top.
+        dislocated = cards[:3]
+        for m in dislocated:
+            simulate_trend(m, p10_move=-0.35, p9_move=0.0)
+
+        # A hugely popular card whose grades moved together is not a finding,
+        # however famous it is.
         famous = cards[10]
         famous["total_pop"] = 19000
-        simulate_prices(famous, rng, mispricing=1.0, sales=40)
+        simulate_trend(famous, p10_move=-0.30, p9_move=-0.30)
 
-        model = fit_cohort(cards)
-        for m in cards:
-            score_card(m, model)
         ranked = rank(cards, WEIGHTS, FILTERS["min_sales_per_grade"])
-
-        # The three genuinely underpriced cards must take the top three slots,
-        # ahead of everything the noise throws up.
         top3 = [id(m) for m in ranked[:3]]
-        for m in bargains:
-            self.assertIn(id(m), top3, "planted bargain missed the top 3")
-        # The famous card is priced fairly. Its rank among the noise below the
-        # cliff is not meaningful, but its *score* must be an order of
-        # magnitude off a real bargain — population alone earns nothing.
-        self.assertNotIn(id(famous), top3)
-        weakest_bargain = min(m["score"] for m in bargains)
-        self.assertLess(famous["score"], weakest_bargain / 5,
-                        "fairly-priced high-pop card scored near a real bargain")
+        for m in dislocated:
+            self.assertIn(id(m), top3, "planted dislocation missed the top 3")
+        self.assertNotIn(id(famous), [id(m) for m in ranked],
+                         "both grades moving together is not a dislocation")
 
-        # There should be a visible cliff between the real finds and the noise,
-        # which is what makes the output actionable rather than a ranked blur.
-        self.assertGreater(ranked[2]["score"], ranked[3]["score"] * 3,
-                           "no separation between genuine finds and noise")
+    def test_ten_running_ahead_is_not_a_finding(self):
+        """A 10 outpacing its 9 is a hot card, not a cheap one."""
+        rng = random.Random(8)
+        cards = [m for c in simulate_universe(40) if (m := analyze(c, FILTERS))]
+        for m in cards:
+            simulate_prices(m, rng, sales=15)
+            simulate_trend(m, p10_move=0.40, p9_move=0.0)
+        self.assertEqual(rank(cards, WEIGHTS, 3), [])
 
-    def test_score_separates_cheap_from_rich(self):
-        """The old scan's fatal flaw was a score that was 70% constant, so
-        everything landed in a 0.04 band. The new score must put real daylight
-        between an underpriced card and an overpriced one."""
+    def test_cards_without_dated_sales_do_not_rank(self):
+        rng = random.Random(2)
+        cards = [m for c in simulate_universe(40) if (m := analyze(c, FILTERS))]
+        for m in cards:
+            simulate_prices(m, rng, sales=15)   # no trend attached
+        self.assertEqual(rank(cards, WEIGHTS, 3), [])
+
+    def test_bigger_dislocation_ranks_higher(self):
         rng = random.Random(9)
         cards = [m for c in simulate_universe(60) if (m := analyze(c, FILTERS))]
         for m in cards:
-            simulate_prices(m, rng)
-        cheap, rich = cards[0], cards[1]
-        simulate_prices(cheap, rng, mispricing=0.5, sales=15)
-        simulate_prices(rich, rng, mispricing=2.0, sales=15)
+            simulate_prices(m, rng, sales=15)
+            simulate_trend(m, p10_move=0.0, p9_move=0.0)
+        big, small = cards[0], cards[1]
+        simulate_trend(big, p10_move=-0.50, p9_move=0.05)
+        simulate_trend(small, p10_move=-0.18, p9_move=0.0)
 
-        model = fit_cohort(cards)
-        for m in cards:
-            score_card(m, model)
         ranked = rank(cards, WEIGHTS, FILTERS["min_sales_per_grade"])
-
-        self.assertIs(ranked[0], cheap, "underpriced card should rank first")
-        # Overpriced cards are no longer listed at all: this is a list of things
-        # to buy, and a card the model calls expensive is not a finding.
-        self.assertNotIn(id(rich), [id(m) for m in ranked],
-                         "an overpriced card must not appear on a buy list")
-        self.assertGreater(cheap["score"], 50.0)
+        self.assertIs(ranked[0], big)
+        self.assertIn(id(small), [id(m) for m in ranked])
+        self.assertGreater(big["score"], small["score"])
 
     def test_liquidity_never_promotes_an_overpriced_card(self):
         """A heavily-traded card that is richly priced must still rank below a

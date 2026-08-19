@@ -220,7 +220,8 @@ def main():
             score_card(m, model)
 
         ranked = rank(targets, cfg["ranking_weights"], filters["min_sales_per_grade"],
-                      filters.get("min_edge_usd", 25))
+                      filters.get("min_edge_usd", 25),
+                      filters.get("min_move_pct", 15))
         stats = cohort_stats(targets)
 
         print(f"\nFitted premium curve: {model['kind']}, "
@@ -228,7 +229,9 @@ def main():
         if model["kind"] == "loglog":
             print(f"  slope {model['slope']:.2f} — "
                   f"{'scarcer 10s do command higher premiums in this pool' if model['slope'] > 0.15 else 'this pool barely prices scarcity at all, treat results as weak'}")
-        print(f"{len(ranked)} cards scoreable with comps at both grades.")
+        dated = sum(1 for m in targets if m.get("p10_trend") and m.get("p9_trend"))
+        print(f"{dated} of {len(targets)} cards had enough dated sales at both "
+              f"grades to measure a trend; {len(ranked)} show a dislocation.")
 
         problem = diagnose(lookup_stats, bool(ranked))
         if problem:

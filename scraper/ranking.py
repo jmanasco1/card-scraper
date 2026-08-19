@@ -84,6 +84,22 @@ def liquidity(m):
     return m.get("p10_sales", 0) + m.get("p9_sales", 0)
 
 
+def dislocation(m):
+    """How far this card's PSA 10 has moved against its own PSA 9.
+
+    Both grades are the same card, same player, same collector base, so
+    whatever drives demand moves them together. When the 10 falls and the 9
+    doesn't, that gap is a real dislocation in the thing itself — not an
+    inference from how other cards are priced. Returns percentage points,
+    negative when the 10 has fallen relative to the 9, or None when either
+    grade lacks enough dated sales to say.
+    """
+    t10, t9 = m.get("p10_trend"), m.get("p9_trend")
+    if not t10 or not t9:
+        return None
+    return round(t10["change_pct"] - t9["change_pct"], 1)
+
+
 def score(m, conf, weights):
     """Expected edge, in percentage points of underpricing.
 
@@ -105,13 +121,15 @@ def score(m, conf, weights):
     return round(edge, 2)
 
 
-def rank(candidates, weights, min_sales, min_edge_usd=25.0):
-    """Score every priced candidate and sort by edge, best first.
+def rank(candidates, weights, min_sales, min_edge_usd=25.0, min_move_pct=15.0):
+    """Rank on within-card price dislocation, best first.
 
-    Only cards the model thinks are *cheap* are returned. An overpriced card is
-    not a finding on a list of things to buy, and a $5 gap on a $15 card is
-    noise dressed up as an opportunity — `min_edge_usd` sets the floor below
-    which a discount isn't worth anybody's time.
+    Cards are listed when their PSA 10 has fallen meaningfully against their
+    own PSA 9. Nothing here depends on predicting what a card *should* cost:
+    the cross-card model that tried to do that produced fair values spanning
+    prices no card had ever sold for, because the 10/9 premium varies from
+    roughly 2x to 20x for reasons no available field explains. A card measured
+    against its own recent history needs none of that.
     """
     from .value import confidence
 
@@ -120,18 +138,23 @@ def rank(candidates, weights, min_sales, min_edge_usd=25.0):
         conf = confidence(m, min_sales)
         m["confidence"] = conf
         m["liquidity"] = liquidity(m)
-        m["score"] = score(m, conf, weights)
-        if m["score"] is None or conf <= 0:
+        m["dislocation_pct"] = dislocation(m)
+
+        if conf <= 0 or m["dislocation_pct"] is None:
             continue
-        if (m.get("discount_pct") or 0) <= 0:
+        # Only the 10 falling behind counts; a 10 running ahead of its 9 is a
+        # hot card, not a cheap one.
+        if m["dislocation_pct"] > -min_move_pct:
             continue
-        # Must be below the band the fit supports, not merely below its
-        # midpoint. Otherwise every card the curve happens to sit above gets
-        # reported as a find.
-        if not m.get("below_band"):
+
+        t10 = m["p10_trend"]
+        drop_usd = t10["older_median"] - t10["recent_median"]
+        if drop_usd < min_edge_usd:
             continue
-        if (m.get("headroom_usd") or 0) < min_edge_usd:
-            continue
+
+        m["drop_usd"] = round(drop_usd, 2)
+        # Magnitude of the dislocation, damped by how trustworthy the comps are.
+        m["score"] = round(abs(m["dislocation_pct"]) * conf, 1)
         scored.append(m)
 
     scored.sort(key=lambda m: m["score"], reverse=True)

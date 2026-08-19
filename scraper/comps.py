@@ -22,6 +22,7 @@ and pauses for a human when it hits one.
 import re
 import statistics
 import time
+from datetime import date
 from urllib.parse import quote_plus
 
 EBAY_SOLD = (
@@ -30,6 +31,25 @@ EBAY_SOLD = (
 )
 
 _PRICE_RE = re.compile(r"\$([\d,]+(?:\.\d{2})?)")
+# eBay stamps every sold listing with "Sold  Mar 15, 2025".
+_DATE_RE = re.compile(r"sold\s+([a-z]{3})\s+(\d{1,2}),?\s+(\d{4})", re.I)
+_MONTHS = {m: i + 1 for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun",
+     "jul", "aug", "sep", "oct", "nov", "dec"])}
+
+
+def parse_sold_date(text):
+    """Date of sale from a listing's text, or None."""
+    m = _DATE_RE.search(text or "")
+    if not m:
+        return None
+    mon = _MONTHS.get(m.group(1).lower())
+    if not mon:
+        return None
+    try:
+        return date(int(m.group(3)), mon, int(m.group(2)))
+    except ValueError:
+        return None
 
 # Anything in a title that means the price isn't for one raw single card.
 _JUNK = (
@@ -391,6 +411,7 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
     audit.append(entry)
 
     def harvest(strict):
+        """Returns [(price, sold_date_or_None)] for the listings that match."""
         out = []
         for it in items:
             if not title_matches(it.get("title", ""), metrics, grade, require_number=strict):
@@ -399,17 +420,19 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
             if not pm:
                 continue
             try:
-                out.append(float(pm.group(1).replace(",", "")))
+                price = float(pm.group(1).replace(",", ""))
             except ValueError:
                 continue
+            out.append((price, parse_sold_date(it.get("text", ""))))
         return out
 
-    prices = harvest(strict=True)
+    sales = harvest(strict=True)
     matching = "strict"
-    if len(prices) < 3:
+    if len(sales) < 3:
         relaxed = harvest(strict=False)
-        if len(relaxed) > len(prices):
-            prices, matching = relaxed, "relaxed"
+        if len(relaxed) > len(sales):
+            sales, matching = relaxed, "relaxed"
+    prices = [p for p, _ in sales]
 
     entry["matching"] = matching
     for it in items[:25]:
@@ -421,6 +444,7 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
         else:
             entry["kept"].append(line)
     entry["prices"] = sorted(prices)
+    entry["dated"] = sum(1 for _, d in sales if d)
 
     stats.setdefault("listings_seen", 0)
     stats["listings_seen"] += len(items)
@@ -440,6 +464,8 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
         return None
 
     core = _trimmed(prices)
+    keep = set(core)
+    dated = sorted(((d, p) for p, d in sales if d and p in keep), key=lambda x: x[0])
     median = statistics.median(core)
     # Dispersion relative to the median: high values mean the "comps" are
     # probably a mix of different cards, so the model discounts them.
@@ -452,6 +478,39 @@ def fetch_grade_comps(page, metrics, grade, delay=1.5, debug=False, interactive=
         "spread": round(spread, 2),
         "low": round(min(core), 2),
         "high": round(max(core), 2),
+        "trend": _trend(dated),
+    }
+
+
+def _trend(dated):
+    """How this card's own price has moved, comparing its most recent sales to
+    its earlier ones.
+
+    This is a within-card comparison, which is the point. Estimating what a
+    card *should* cost from other cards requires modelling why one card's PSA
+    10 commands 3x its 9 while another's commands 15x, and that variation is
+    driven by things no available field captures. Comparing a card to its own
+    recent history assumes nothing: the player, the set, the era and the
+    collector base are all held fixed because it is the same card.
+    """
+    if len(dated) < 6:
+        return None
+    cut = max(2, len(dated) // 3)
+    older = [p for _, p in dated[:-cut]]
+    recent = [p for _, p in dated[-cut:]]
+    if not older or not recent:
+        return None
+    old_med, new_med = statistics.median(older), statistics.median(recent)
+    if old_med <= 0:
+        return None
+    return {
+        "older_median": round(old_med, 2),
+        "recent_median": round(new_med, 2),
+        "recent_n": len(recent),
+        "older_n": len(older),
+        "change_pct": round(100.0 * (new_med - old_med) / old_med, 1),
+        "first": dated[0][0].isoformat(),
+        "last": dated[-1][0].isoformat(),
     }
 
 
@@ -476,4 +535,5 @@ def price_card(page, metrics, delay=1.5, debug=False, interactive=True, stats=No
         # opening eBay: a $2 card showing a $2-$720 range is obviously wrong.
         metrics[f"{prefix}_low"] = res["low"] if res else None
         metrics[f"{prefix}_high"] = res["high"] if res else None
+        metrics[f"{prefix}_trend"] = res.get("trend") if res else None
     return bool(ten and nine)

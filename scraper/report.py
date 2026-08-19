@@ -21,6 +21,19 @@ def _bar(pct, cap=60.0):
     return max(0.0, min(100.0, abs(pct) / cap * 100.0))
 
 
+def _move(r, prefix):
+    """A grade's own price history: what it was, what it is now, and the move.
+    Only observed sales — nothing here is predicted."""
+    t = r.get(f"{prefix}_trend")
+    if not t:
+        return "—"
+    chg = t["change_pct"]
+    cls = "down" if chg < 0 else "up"
+    return (f"${t['older_median']:,.0f} → ${t['recent_median']:,.0f}"
+            f"<span class='n'>{t['older_n']}+{t['recent_n']} sales</span>"
+            f"<span class='chg {cls}'>{chg:+.0f}%</span>")
+
+
 def _range(r, prefix):
     """Low-high of the comps behind a median. A range that spans orders of
     magnitude is the clearest sign the search matched more than one card."""
@@ -65,10 +78,10 @@ def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
         </td>
         <td class="num-col">{r.get('total_pop', 0):,}</td>
         <td class="num-col">{r.get('gem_rate_pct', 0)}%</td>
-        <td class="num-col">${(r.get('p9_median') or 0):,.0f}<span class="n">{r.get('p9_sales', 0)}</span><span class="rng">{_range(r, 'p9')}</span></td>
-        <td class="num-col buy">${(r.get('p10_median') or 0):,.0f}<span class="n">{r.get('p10_sales', 0)}</span><span class="rng">{_range(r, 'p10')}</span></td>
-        <td class="num-col worth">${(r.get('fair_low') or 0):,.0f}–${(r.get('fair_high') or 0):,.0f}<span class="head">{(r.get('headroom_usd') or 0):+,.0f} below range</span></td>
-        <td class="num-col ratio">{r.get('gap')}×<span class="n">vs {r.get('expected_gap')}×</span></td>
+
+        <td class="num-col buy">{_move(r, 'p10')}</td>
+        <td class="num-col">{_move(r, 'p9')}</td>
+        <td class="num-col disloc">{(r.get('dislocation_pct') or 0):+.0f} pts</td>
         <td class="disc {sign}">
           <div class="dval">{disc:+.0f}%</div>
           <div class="dbar"><span style="width:{_bar(disc):.1f}%"></span></div>
@@ -218,8 +231,10 @@ TEMPLATE = """<!doctype html>
   .num-col .n::before {{ content:"n="; }}
   .ratio .n::before {{ content:""; }}
   .buy {{ font-weight:600; }}
-  .worth {{ font-weight:600; }}
-  .worth .head {{ display:block; font-size:11.5px; color:var(--cheap); font-weight:600; }}
+  .num-col .chg {{ display:block; font-size:11.5px; font-weight:650; }}
+  .num-col .chg.down {{ color:var(--cheap); }}
+  .num-col .chg.up {{ color:var(--muted); }}
+  .disloc {{ font-weight:700; color:var(--cheap); }}
   .sample {{
     background:#5b1d1d; color:#ffdede; border:1px solid #a33; border-radius:10px;
     padding:12px 14px; margin:14px 0; font-size:13.5px; letter-spacing:.01em;
@@ -260,12 +275,12 @@ TEMPLATE = """<!doctype html>
 
   <div class="lede">
     Read one row like this: <b>the PSA 10 currently sells for</b> the first
-    dollar figure. The second column is <b>the range the model supports</b>,
-    given what every other card in this run charges for being equally hard to
-    gem and equally wanted. It is a range, not a price: no card sells for
-    "the model number", and a single figure would only pretend otherwise.
-    Cards appear here only when they trade <b>below the bottom of that range</b>.
-    Click any column to re-sort.
+Every number here is <b>an actual sale price</b>. Each grade shows what the
+    card used to sell for, what it sells for now, and how many sales each side
+    of that is based on. The last column is the difference between the two
+    moves: a card whose PSA 10 has fallen while its own PSA 9 held steady is
+    dislocated against itself. Nothing is predicted, and no card is compared
+    against any other card.
   </div>
   {warn}
 
@@ -276,11 +291,9 @@ TEMPLATE = """<!doctype html>
       <th>Card</th>
       <th data-k="pop">Pop</th>
       <th data-k="gem">Gem&nbsp;%</th>
-      <th data-k="p9">PSA 9</th>
-      <th data-k="p10">PSA 10 costs</th>
-      <th data-k="fair">Model's range</th>
-      <th data-k="gap">Ratio</th>
-      <th data-k="disc" class="sorted">Discount</th>
+      <th data-k="p10">PSA 10 — its own sales</th>
+      <th data-k="p9">PSA 9 — its own sales</th>
+      <th data-k="disc" class="sorted">10 vs its 9</th>
       <th data-k="conf">Trust</th>
       <th data-k="score">Edge</th>
       <th>Verify</th>
@@ -291,10 +304,10 @@ TEMPLATE = """<!doctype html>
   </div>
 
   <footer>
-    <p><b>Sanity-check the range first.</b> Under each price is the spread of
-    the sales behind it. If a card you know to be worth a few dollars shows a
-    range running into the hundreds, the search caught more than one card and
-    that row is junk — the surest tell there is, and quicker than opening eBay.</p>
+    <p><b>A dislocation is a question, not an answer.</b> The 10 falling behind
+    its own 9 can mean the 10 is cheap, or it can mean a batch of 10s hit the
+    market at once, or that the recent sales were weak listings. It tells you
+    where to look.</p>
     <p><b>Before you buy anything:</b> open both eBay links and check the comps
     are genuinely the same card — same year, same parallel, same number. Thin
     comps are the usual reason a discount evaporates on inspection, which is
