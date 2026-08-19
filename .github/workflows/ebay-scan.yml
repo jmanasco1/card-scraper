@@ -1,10 +1,13 @@
 name: eBay Graded Card Scan
 
 on:
-  schedule:
-    # Every 15 minutes. GitHub delays scheduled runs under load — see README;
-    # real cadence is looser than this and runs can be skipped entirely.
-    - cron: "*/15 * * * *"
+  # TEMPORARILY DISABLED until eBay auth succeeds. Every scheduled run would
+  # fail on invalid_client and burn metered Actions minutes on a private repo.
+  # Re-enable by uncommenting once a manual `probe` run comes back green.
+  # schedule:
+  #   # Every 15 minutes. GitHub delays scheduled runs under load — see README;
+  #   # real cadence is looser than this and runs can be skipped entirely.
+  #   - cron: "*/15 * * * *"
   workflow_dispatch:
     inputs:
       mode:
