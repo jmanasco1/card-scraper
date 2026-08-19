@@ -47,7 +47,13 @@ MIN_GEM_RATE = 0.10
 
 # Below this many cards we can't fit a slope worth trusting, so we fall back
 # to a flat model (expected gap = cohort median gap).
-MIN_COHORT_FOR_FIT = 8
+#
+# Two regressors plus an intercept need real data behind them. Fitting three
+# parameters to eight points produces a curve that passes beautifully through
+# the noise and predicts nothing, then reports a confident-looking dollar value
+# built on it. Thirty is not generous — it is the point below which the
+# prediction band is so wide that nothing clears it anyway.
+MIN_COHORT_FOR_FIT = 30
 
 # Fraction of worst-fitting cards dropped before the final refit. The whole
 # point of the scan is to find cards that sit far off the curve, but on a
@@ -170,6 +176,7 @@ def fit_cohort(candidates):
             "n": len(priced),
             "median_gap": median_gap,
             "r_squared": 0.0,
+            "resid_sd": 0.0,
             "predict": lambda _rate, _p9=None: median_gap,
         }
 
@@ -201,6 +208,15 @@ def fit_cohort(candidates):
     observed_gaps = [math.exp(p[2]) for p in trimmed]
     gap_ceiling = max(observed_gaps) * 1.25
 
+    # How far the real cards scatter around the fitted curve. This is the
+    # honest width of any prediction: quoting a single "worth $919" hides that
+    # the same fit is equally happy with $600 or $1,400, and invites exactly
+    # the objection that the card doesn't sell for $919. Nothing does — the
+    # model describes a trend, not a price.
+    residuals = [p[2] - (a + b * p[0] + c * p[1]) for p in trimmed]
+    mean_r = sum(residuals) / len(residuals)
+    resid_sd = (sum((r - mean_r) ** 2 for r in residuals) / max(1, len(residuals) - 3)) ** 0.5
+
     def predict(rate, p9=None):
         x = min(max(_scarcity_x(rate), lo_x), hi_x)
         d = min(max(_demand_x(p9 if p9 else math.exp(sum(ds) / len(ds))), lo_d), hi_d)
@@ -219,6 +235,7 @@ def fit_cohort(candidates):
         # R^2 is reported over the trimmed core the curve was actually fitted
         # to; it describes how consistently the normal cards price scarcity.
         "demand_slope": c,
+        "resid_sd": resid_sd,
         "r_squared": _r_squared(trimmed, a, b, c),
         "x_range": (lo_x, hi_x),
         "gap_ceiling": gap_ceiling,
@@ -247,6 +264,16 @@ def score_card(m, model):
     # since that is the side the market prices most consistently.
     m["fair_p10"] = round(m["p9_median"] * expected, 2)
     m["headroom_usd"] = round(m["fair_p10"] - m["p10_median"], 2)
+
+    # The band the fit actually supports. A card only counts as underpriced if
+    # it trades below the *bottom* of it — anywhere inside is consistent with
+    # the card being priced normally and the model simply being imprecise.
+    sd = model.get("resid_sd") or 0.0
+    m["fair_low"] = round(m["p9_median"] * expected * math.exp(-sd), 2)
+    m["fair_high"] = round(m["p9_median"] * expected * math.exp(sd), 2)
+    m["below_band"] = m["p10_median"] < m["fair_low"]
+    # Headroom measured to the conservative edge, not the midpoint.
+    m["headroom_usd"] = round(m["fair_low"] - m["p10_median"], 2)
     if expected > 0:
         ratio = gap / expected
         m["value_ratio"] = round(ratio, 3)

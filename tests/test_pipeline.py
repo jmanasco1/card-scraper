@@ -468,3 +468,43 @@ class TestParallelSeparation(unittest.TestCase):
             self.MORANT, 10))
         self.assertIsNotNone(comps.reject_reason(
             "2021-22 Panini Chronicles Ja Morant #165 PSA 10", self.MORANT, 10))
+
+
+class TestPredictionBand(unittest.TestCase):
+    """A single 'worth $919' figure invited the obvious objection that nothing
+    sells for $919. The fit supports a range, and only cards below it are
+    findings."""
+
+    def _pool(self, n=80, seed=13):
+        rng = random.Random(seed)
+        cards = [m for c in simulate_universe(n, seed=seed) if (m := analyze(c, FILTERS))]
+        for m in cards:
+            simulate_prices(m, rng)
+        return cards
+
+    def test_band_brackets_the_point_estimate(self):
+        cards = self._pool()
+        model = fit_cohort(cards)
+        for m in cards:
+            score_card(m, model)
+        for m in cards:
+            self.assertLessEqual(m["fair_low"], m["fair_p10"] + 1e-6)
+            self.assertGreaterEqual(m["fair_high"], m["fair_p10"] - 1e-6)
+
+    def test_card_inside_the_band_is_not_a_finding(self):
+        cards = self._pool()
+        model = fit_cohort(cards)
+        for m in cards:
+            score_card(m, model)
+        inside = [m for m in cards if not m["below_band"]]
+        self.assertTrue(inside, "fixture should contain normally-priced cards")
+        ranked = rank(cards, WEIGHTS, 3)
+        for m in inside:
+            self.assertNotIn(id(m), [id(r) for r in ranked])
+
+    def test_tiny_cohort_falls_back_instead_of_fitting_noise(self):
+        """Eight cards cannot support a three-parameter fit."""
+        cards = self._pool(n=12, seed=5)[:8]
+        model = fit_cohort(cards)
+        self.assertEqual(model["kind"], "flat",
+                         "a cohort this small must not pretend to a fitted curve")

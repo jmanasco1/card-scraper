@@ -125,6 +125,11 @@ def rank(candidates, weights, min_sales, min_edge_usd=25.0):
             continue
         if (m.get("discount_pct") or 0) <= 0:
             continue
+        # Must be below the band the fit supports, not merely below its
+        # midpoint. Otherwise every card the curve happens to sit above gets
+        # reported as a find.
+        if not m.get("below_band"):
+            continue
         if (m.get("headroom_usd") or 0) < min_edge_usd:
             continue
         scored.append(m)

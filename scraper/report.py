@@ -67,7 +67,7 @@ def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
         <td class="num-col">{r.get('gem_rate_pct', 0)}%</td>
         <td class="num-col">${(r.get('p9_median') or 0):,.0f}<span class="n">{r.get('p9_sales', 0)}</span><span class="rng">{_range(r, 'p9')}</span></td>
         <td class="num-col buy">${(r.get('p10_median') or 0):,.0f}<span class="n">{r.get('p10_sales', 0)}</span><span class="rng">{_range(r, 'p10')}</span></td>
-        <td class="num-col worth">${(r.get('fair_p10') or 0):,.0f}<span class="head">{(r.get('headroom_usd') or 0):+,.0f}</span></td>
+        <td class="num-col worth">${(r.get('fair_low') or 0):,.0f}–${(r.get('fair_high') or 0):,.0f}<span class="head">{(r.get('headroom_usd') or 0):+,.0f} below range</span></td>
         <td class="num-col ratio">{r.get('gap')}×<span class="n">vs {r.get('expected_gap')}×</span></td>
         <td class="disc {sign}">
           <div class="dval">{disc:+.0f}%</div>
@@ -93,8 +93,18 @@ def render(sport, ranked, model, stats, uni_report, sample=False, problem=None):
       populations are real, but every price on this page is invented to
       demonstrate the layout. Do not buy anything based on it.
     </div>"""
+    n_fit = model.get("n_fit") or model.get("n") or 0
+    if model.get("kind") == "flat" or n_fit < 30:
+        warn += f"""
+    <div class="warn">
+      <strong>Not enough cards to model anything.</strong> The curve was fitted
+      on {n_fit} card{'' if n_fit == 1 else 's'}, and it estimates three
+      parameters. At that size it fits noise and any dollar figure it produces
+      is arbitrary. Run <code>./run.sh --limit 60</code> or more — the whole
+      method depends on comparing a card against a decent pool of its peers.
+    </div>"""
     if weak:
-        warn = """
+        warn += """
     <div class="warn">
       <strong>Weak fit.</strong> The cards priced this run don't price scarcity
       consistently, so these discounts are noisy. Price more cards
@@ -250,11 +260,12 @@ TEMPLATE = """<!doctype html>
 
   <div class="lede">
     Read one row like this: <b>the PSA 10 currently sells for</b> the first
-    dollar figure, and <b>the model thinks it should sell for</b> the second,
-    based on what every other card in this run charges for being equally hard to
-    gem. The green number under it is that difference in dollars. A big positive
-    number means the market is undercharging for a genuinely scarce 10 — that's
-    the finding. Click any column to re-sort.
+    dollar figure. The second column is <b>the range the model supports</b>,
+    given what every other card in this run charges for being equally hard to
+    gem and equally wanted. It is a range, not a price: no card sells for
+    "the model number", and a single figure would only pretend otherwise.
+    Cards appear here only when they trade <b>below the bottom of that range</b>.
+    Click any column to re-sort.
   </div>
   {warn}
 
@@ -267,7 +278,7 @@ TEMPLATE = """<!doctype html>
       <th data-k="gem">Gem&nbsp;%</th>
       <th data-k="p9">PSA 9</th>
       <th data-k="p10">PSA 10 costs</th>
-      <th data-k="fair">Model says worth</th>
+      <th data-k="fair">Model's range</th>
       <th data-k="gap">Ratio</th>
       <th data-k="disc" class="sorted">Discount</th>
       <th data-k="conf">Trust</th>
