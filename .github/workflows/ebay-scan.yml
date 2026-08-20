@@ -149,7 +149,7 @@ jobs:
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/ references.jsonl data/reference_snapshots.jsonl \
+          git add data/references.jsonl data/reference_snapshots.jsonl \
                   data/flags.jsonl data/episodes.jsonl 2>/dev/null || true
           if git diff --staged --quiet; then echo "nothing staged"; exit 0; fi
           git commit -m "Scan: refs + flags $(date -u +%FT%TZ)"
@@ -173,7 +173,7 @@ jobs:
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/ 
+          git add data/
           if git diff --staged --quiet; then echo "nothing staged"; exit 0; fi
           git commit -m "Backfill: ${{ steps.backfill.outputs.new_count }} slice listings"
           for attempt in 1 2 3 4; do
@@ -196,7 +196,7 @@ jobs:
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/ set_volumes.json
+          git add data/set_volumes.json
           if git diff --staged --quiet; then echo "unchanged"; exit 0; fi
           git commit -m "Refresh set volume ranking"
           for attempt in 1 2 3 4; do
@@ -227,7 +227,7 @@ jobs:
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/ aspects.jsonl data/lifecycle.jsonl
+          git add data/aspects.jsonl data/lifecycle.jsonl
           if git diff --staged --quiet; then
             echo "Nothing staged; skipping commit."
             exit 0
@@ -246,7 +246,7 @@ jobs:
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/ lifecycle.jsonl data/recheck_state.json
+          git add data/lifecycle.jsonl data/recheck_state.json
           if git diff --staged --quiet; then
             echo "Nothing staged; skipping commit."
             exit 0
@@ -274,7 +274,7 @@ jobs:
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/  docs/
+          git add data/ docs/
           if git diff --staged --quiet; then
             echo "Nothing staged; skipping commit."
             exit 0

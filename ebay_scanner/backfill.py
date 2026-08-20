@@ -35,8 +35,22 @@ def build_slices(cfg):
         except (OSError, ValueError, KeyError):
             print("[backfill] no set_volumes.json; run mode probe-sets first")
             return []
-        sets = [r["set"] for r in ranked[:int(cfg.get("slice_top_sets", 40))]
-                if r["set"] and r["set"].lower() != "not specified"]
+        # Threshold, not a top-N cut. A set earns a slice when it carries
+        # enough listings to produce buckets with real comps; capping at an
+        # arbitrary N silently excluded whole brands (Fleer, Upper Deck,
+        # Stadium Club) purely because modern products out-list them.
+        floor = int(cfg.get("slice_min_listings", 0) or 0)
+        cap = int(cfg.get("slice_top_sets", 0) or 0)
+        usable = [r for r in ranked
+                  if r.get("set") and r["set"].lower() != "not specified"]
+        if floor:
+            usable = [r for r in usable if r.get("listings", 0) >= floor]
+        if cap:
+            usable = usable[:cap]
+        sets = [r["set"] for r in usable]
+        print(f"[backfill] {len(sets)} sets qualify"
+              + (f" (>= {floor:,} listings)" if floor else "")
+              + (f", capped at {cap}" if cap else ""))
     out = []
     for grade in cfg.get("slice_grades") or []:
         value = graders.get(grade["grader"])

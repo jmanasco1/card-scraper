@@ -63,6 +63,7 @@
       "grade": "10"
     }
   ],
-  "slice_top_sets": 60,
-  "backfill_slices_per_run": 25
+  "backfill_slices_per_run": 25,
+  "slice_min_listings": 1500,
+  "slice_top_sets": 0
 }
