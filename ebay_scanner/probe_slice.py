@@ -48,6 +48,18 @@ def main():
     total(client, cfg, label="baseline: category + $20-400 + graded")
     psa10 = "Professional Grader:{Professional Sports Authenticator (PSA)},Grade:{10}"
     total(client, cfg, aspect_extra=psa10, label="PSA 10")
+    print("\n########## EXACT GRADER + GRADE VALUES ##########")
+    params = query.search_params(cfg, 0)
+    params["limit"] = 1
+    params["fieldgroups"] = "ASPECT_REFINEMENTS"
+    body = client.search(params)
+    for dist in (body.get("refinement", {}).get("aspectDistributions") or []):
+        if dist.get("localizedAspectName") not in ("Professional Grader", "Grade"):
+            continue
+        print(f"[slice] {dist.get('localizedAspectName')}:")
+        for v in (dist.get("aspectValueDistributions") or [])[:14]:
+            print(f"[slice]   {v.get('matchCount'):>9,}  {v.get('localizedAspectValue')!r}")
+
     print("\n########## SET-PINNED SLICES (set known without enrichment) ##########")
     for st in ["2022 Panini Prizm", "2023 Panini Prizm", "2021 Panini Prizm",
                "2020 Panini Prizm", "2022 Topps Chrome", "2021 Topps Chrome",
