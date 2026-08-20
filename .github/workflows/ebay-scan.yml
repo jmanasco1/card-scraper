@@ -28,6 +28,7 @@ on:
           - probe-slice
           - backfill
           - scan
+          - test-notify
           - recheck
           - enrich
       max_pages:
@@ -113,6 +114,14 @@ jobs:
       - name: Probe re-check routes
         if: ${{ inputs.mode == 'probe-recheck' }}
         run: python -m ebay_scanner.probe_recheck
+
+      - name: Send a test notification
+        if: ${{ inputs.mode == 'test-notify' }}
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python -m ebay_scanner.scanner --test-notify
 
       - name: Reference values, BIN scan, episodes
         id: scan

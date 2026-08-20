@@ -11,6 +11,7 @@ the alerting floor.
 """
 import json
 import os
+import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -97,7 +98,32 @@ def notify(flag):
     return False
 
 
+def test_notify():
+    """Send one sample alert so delivery can be verified without waiting for a
+    real flag or mutating flags.jsonl."""
+    sample = {
+        "price": 145.0, "reference": 250.0, "discount_pct": 42.0,
+        "comp_count": 5, "bucket": "2022|bowman chrome|77|base|PSA|10",
+        "title": "TEST ALERT — Bowman Chrome Bobby Witt Jr. #77 RC PSA 10",
+        "itemWebUrl": "https://www.ebay.com/itm/000000000000",
+    }
+    channels = []
+    if os.environ.get("TELEGRAM_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"):
+        channels.append("telegram")
+    if os.environ.get("NTFY_TOPIC"):
+        channels.append("ntfy")
+    print(f"[scan] configured channels: {channels or 'NONE'}")
+    if not channels:
+        print("::error::No notification channel configured.")
+        return 1
+    ok = notify(sample)
+    print(f"[scan] test notification {'SENT' if ok else 'FAILED'}")
+    return 0 if ok else 1
+
+
 def main():
+    if "--test-notify" in sys.argv:
+        return test_notify()
     rows, aspects, gone = reference.load_corpus()
     now = datetime.now(timezone.utc)
     references, stats, _ = reference.build(rows, aspects, gone, now)
