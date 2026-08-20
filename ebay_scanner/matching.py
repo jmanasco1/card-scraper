@@ -45,6 +45,45 @@ TITLE_GRADE_RE = re.compile(
 YEAR_RE = re.compile(r"\b(19[3-9]\d|20[0-4]\d)(?:\s*[-/]\s*\d{2,4})?\b")
 CARD_NO_RE = re.compile(r"#\s*([A-Za-z]{0,4}-?\d+[A-Za-z]?)\b")
 
+# A base Prizm and a Gold /10 of the same card number are different cards for
+# pricing. Longest match wins so "green ice" beats "ice" and "red white blue"
+# beats "red". Absence of any of these means the base card.
+PARALLELS = [
+    "red white and blue", "red white blue", "black and white checker",
+    "black white checker", "white sparkle", "gold sparkle", "gold vinyl",
+    "green sparkle", "blue sparkle", "pink sparkle", "orange sparkle",
+    "neon green pulsar", "purple power", "green pulsar", "blue pulsar",
+    "red pulsar", "pink pulsar", "orange pulsar", "silver prizm",
+    "green ice", "orange ice", "blue ice", "red ice", "purple ice",
+    "pink ice", "gold ice", "cracked ice", "white ice", "black ice",
+    "green lazer", "orange lazer", "blue lazer", "red lazer", "purple lazer",
+    "pink lazer", "gold lazer", "no huddle", "fast break", "snakeskin",
+    "choice", "disco", "hyper", "mojo", "shimmer", "atomic", "xfractor",
+    "x fractor", "superfractor", "refractor", "camo", "tiger", "wave",
+    "pulsar", "lazer", "laser", "sparkle", "genesis",
+    "neon green", "neon orange", "neon pink", "flash", "scope",
+    "silver", "gold", "black", "green", "orange", "purple", "pink", "blue",
+    "red", "bronze", "teal", "aqua", "white", "ice",
+]
+def _flatten(text):
+    """Lowercase, '&' -> 'and', punctuation -> spaces. Matching happens on
+    this form so 'Red White & Blue' and 'Red White and Blue' are one value."""
+    text = (text or "").lower().replace("&", " and ")
+    return " " + re.sub(r"[^a-z0-9]+", " ", text).strip() + " "
+
+
+_PARALLEL_PHRASES = None
+
+
+def _parallel_phrases():
+    global _PARALLEL_PHRASES
+    if _PARALLEL_PHRASES is None:
+        _PARALLEL_PHRASES = sorted(
+            {" " + re.sub(r"\s+", " ", _flatten(p).strip()) + " " for p in PARALLELS},
+            key=len, reverse=True)
+    return _PARALLEL_PHRASES
+
+
 SPORT_WORDS = {"basketball", "baseball", "football", "hockey", "soccer",
                "golf", "boxing", "racing", "wrestling", "tennis"}
 NOISE_WORDS = {
@@ -135,6 +174,19 @@ def normalize_player(value):
     return " ".join(tokens) or None
 
 
+def parse_parallel(title, aspect_value=None):
+    """Parallel/variety, from the aspect when enriched, else the title.
+    Returns 'base' when nothing matches, which is itself a real bucket."""
+    for source in (aspect_value, title):
+        if not source:
+            continue
+        flat = _flatten(source)
+        for phrase in _parallel_phrases():
+            if phrase in flat:
+                return phrase.strip()
+    return "base"
+
+
 def parse_title(title):
     """Best-effort structured fields from a free-text title."""
     text = title or ""
@@ -190,7 +242,9 @@ def bucket_key(listing, aspect=None):
             card_number = parsed["card_number"]
         if not card_number:
             return None, "slice", "missing:card_number"
-        return (f"{year or '____'}|{set_core}|{card_number}"
+        parallel = parse_parallel(listing.get("title"),
+                                  (listing.get("aspects") or {}).get("Parallel/Variety"))
+        return (f"{year or '____'}|{set_core}|{card_number}|{parallel}"
                 f"|{grader}|{grade}"), "slice", None
 
     if aspect:
