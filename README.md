@@ -174,6 +174,43 @@ free tier). A 15-minute cron is ~2,880 runs/month; even at one minute per run
 that overruns the free allowance. Options: make the repo public (unlimited free
 minutes), accept the billing, or widen the cron to `*/30` or hourly.
 
+### Why the graded aspect filter stays
+
+The `aspect_filter Graded:{Yes}` narrows the search to listings whose seller
+populated eBay's Graded aspect, which raises a fair worry: are real graded
+cards being dropped because a seller skipped the field? Measured against the
+live API rather than argued:
+
+| Filter | Matches | Share of unfiltered |
+|---|---|---|
+| none | 2,753,577 | 100% |
+| `aspect Graded:{Yes}` | 1,377,496 | 50.0% |
+| `conditionIds:{2750}` | 1,333,063 | 48.4% |
+| both | 1,324,929 | 48.1% |
+
+The aspect filter is the **widest** graded filter available — wider than eBay's
+own condition field. To measure what it misses, 500 condition-ungraded listings
+were sampled and their titles scanned for grader names and grades, correcting
+for the 0.43% of that set which does carry the aspect:
+
+- **1.26%** of titles mention a grader at all
+- **0.13%** carry a grader *and* a numeric grade
+
+The gap between those two is the point: a title saying "PSA" is usually
+`PSA-ready`, `PSA/DNA auto` or `PSA 10 candidate`, not a slab. Of 7 token hits
+in 500, one was a real graded card. So the filter misses roughly 1 graded card
+in 750, and dropping it would double the stored volume with raw cards to
+recover that. It stays.
+
+`has_grading_aspects` was considered and **not** added: it reads
+`localizedAspects`, which needs `getItems`, which returns 403 here. With the
+aspect filter on it would be `true` for every row by construction; with it off,
+`false` for every row. Either way a constant, not a measurement. `conditionId`
+is stored on every row instead, and is what made the test above possible.
+
+Reproduce any of this with `mode: probe-filters` or `mode: probe-neither` in the
+workflow dispatch.
+
 ## Rate limits
 
 The Browse API allows **5,000 calls/day** at the application level. A typical
@@ -253,7 +290,7 @@ at any time.
 | `price_min` / `price_max` | `75` / `400` | USD band |
 | `buying_options` | `["FIXED_PRICE"]` | Excludes auctions |
 | `sort` | `newlyListed` | |
-| `limit` / `max_pages` | `200` / `3` | Up to 600 listings per run |
+| `limit` / `max_pages` | `200` / `6` | Up to 1,200 listings per run |
 | `quota_abort_threshold` | `500` | Abort below this many remaining calls |
 | `aspect_filter` | `{"Graded": ["Yes"]}` | Narrows to graded cards |
 | `enrich_with_get_items` | `true` | Needed for aspects; costs 1 call per 20 new items |

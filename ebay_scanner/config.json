@@ -1,15 +1,23 @@
 {
   "marketplace_id": "EBAY_US",
-  "category_ids": ["261328"],
+  "category_ids": [
+    "261328"
+  ],
   "price_min": 75,
   "price_max": 400,
   "currency": "USD",
-  "buying_options": ["FIXED_PRICE"],
+  "buying_options": [
+    "FIXED_PRICE"
+  ],
   "sort": "newlyListed",
   "limit": 200,
-  "max_pages": 3,
+  "max_pages": 6,
   "quota_abort_threshold": 500,
-  "aspect_filter": {"Graded": ["Yes"]},
+  "aspect_filter": {
+    "Graded": [
+      "Yes"
+    ]
+  },
   "enrich_with_get_items": true,
   "category_cache_days": 7
 }
