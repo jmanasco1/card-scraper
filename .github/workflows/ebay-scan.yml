@@ -41,9 +41,13 @@ on:
 permissions:
   contents: write
 
-# Runs commit to the repo, so never let two overlap and race on git push.
+# Runs commit to the repo, so same-kind runs must not overlap. Grouping by mode
+# keeps ad-hoc work (backfill, probes) out of the scheduled collector's group —
+# sharing one group meant each 15-minute cron run cancelled whatever manual run
+# was still queued behind it. Pushes retry with rebase, so cross-group overlap
+# is safe.
 concurrency:
-  group: ebay-scan
+  group: ebay-scan-${{ inputs.mode || github.event.schedule || 'default' }}
   cancel-in-progress: false
 
 jobs:
