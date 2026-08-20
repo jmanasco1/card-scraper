@@ -42,6 +42,9 @@ jobs:
       # Set repository variable EBAY_ENV to "sandbox" to target eBay's sandbox
       # deployment. Defaults to production. Keys are not interchangeable.
       EBAY_ENV: ${{ vars.EBAY_ENV || 'production' }}
+      # Without this Python buffers stdout, so a traceback lands in the log
+      # far from the output that led to it.
+      PYTHONUNBUFFERED: "1"
       SCANNER_MAX_PAGES: ${{ inputs.max_pages }}
     steps:
       - uses: actions/checkout@v4

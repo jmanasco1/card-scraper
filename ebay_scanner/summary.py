@@ -68,6 +68,11 @@ def write_summary(**kw):
 
             # Field-coverage counts: the point of keeping the raw aspects blob.
             fh.write("\n### Field coverage in this batch\n\n")
+            if not kw.get("aspects_available", True):
+                fh.write("> Aspect fields are all empty because eBay returned "
+                         "403 for item detail — the application does not hold "
+                         "Buy API access. This reflects missing **access**, "
+                         "not missing data in the listings.\n\n")
             fh.write("| Field | Present | % |\n|---|---|---|\n")
             for column in ["grader", "grade", "cert_number", "season",
                            "set_name", "player", "card_number"]:

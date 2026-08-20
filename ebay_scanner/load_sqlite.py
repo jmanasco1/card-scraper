@@ -27,6 +27,7 @@ COLUMNS = [
     ("conditionId", "TEXT"),
     ("imageUrl", "TEXT"),
     ("categoryId", "TEXT"),
+    ("epid", "TEXT"),
     ("firstSeenAt", "TEXT"),
     ("detailFetched", "INTEGER"),
     ("aspectCount", "INTEGER"),

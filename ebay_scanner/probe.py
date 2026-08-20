@@ -8,7 +8,7 @@ really use, (4) whether bulk getItems works, (5) the getRateLimits shape.
 import json
 
 from . import auth, config, fields, query
-from .client import EbayClient, browse_remaining
+from .client import EbayApiError, EbayClient, browse_remaining
 
 
 def _dump(label, obj, limit=4000):
@@ -85,22 +85,51 @@ def main():
         print(f"[probe] GRADED FILTER REJECTED: {exc}")
         graded_body = None
 
-    print("\n########## 5. BULK getItems ##########")
-    sample_ids = [i["itemId"] for i in items[:3]]
-    if sample_ids:
-        detail_body = client.get_items(sample_ids)
-        print(f"[probe] getItems top-level keys = {sorted(detail_body.keys())}")
-        detail_items = detail_body.get("items") or []
-        print(f"[probe] returned {len(detail_items)} of {len(sample_ids)} requested")
-        if detail_body.get("warnings"):
-            _dump("getItems warnings", detail_body["warnings"], limit=1500)
-        if detail_items:
-            first = detail_items[0]
-            print(f"[probe] item detail keys = {sorted(first.keys())}")
-            print(f"[probe] has localizedAspects = {'localizedAspects' in first}")
-            _dump("localizedAspects", first.get("localizedAspects"), limit=3000)
-            record = fields.build_record(items[0], first)
-            _dump("BUILT RECORD", record, limit=3000)
+    print("\n########## 5. ITEM DETAIL ROUTES ##########")
+    # Every route that could supply localizedAspects, so a 403 can be
+    # attributed to the Buy API access grant rather than to one bad URL.
+    detail_items = []
+    if items:
+        sample = items[0]
+        item_id = sample["itemId"]
+        routes = [
+            ("getItems (bulk)",
+             f"{config.API_HOST}/buy/browse/v1/item",
+             {"item_ids": item_id}),
+            ("getItem (single)",
+             f"{config.API_HOST}/buy/browse/v1/item/{item_id}",
+             None),
+            ("getItemByLegacyId",
+             f"{config.API_HOST}/buy/browse/v1/item/get_item_by_legacy_id",
+             {"legacy_item_id": sample.get("legacyItemId")}),
+        ]
+        for label, url, params in routes:
+            try:
+                resp = client.get(url, params=params,
+                                  allow_status=(400, 401, 403, 404, 207))
+            except EbayApiError as exc:
+                print(f"[probe] {label}: EbayApiError {exc.status}")
+                continue
+            print(f"[probe] {label}: HTTP {resp.status_code}")
+            if resp.status_code != 200:
+                print(f"[probe]   {resp.text[:300]}")
+                continue
+            body = resp.json()
+            found = body.get("items") if "items" in body else [body]
+            for entry in found or []:
+                if entry and "localizedAspects" in entry:
+                    detail_items.append(entry)
+            print(f"[probe]   top-level keys = {sorted(body.keys())}")
+
+    if detail_items:
+        first = detail_items[0]
+        print(f"[probe] item detail keys = {sorted(first.keys())}")
+        _dump("localizedAspects", first.get("localizedAspects"), limit=3000)
+        _dump("BUILT RECORD", fields.build_record(items[0], first), limit=3000)
+    else:
+        print("[probe] NO item-detail route returned localizedAspects.")
+        _dump("BUILT RECORD (search only, no aspects)",
+              fields.build_record(items[0]) if items else None, limit=2500)
 
     print(f"\n[probe] total API calls used: {client.call_count}")
 

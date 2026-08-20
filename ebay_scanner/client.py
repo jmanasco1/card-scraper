@@ -9,6 +9,20 @@ RETRY_STATUSES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 4
 
 
+class EbayApiError(RuntimeError):
+    """A non-retryable API failure, carrying the status so callers can react.
+
+    Some eBay endpoints are gated behind access grants the application may not
+    hold; those come back 403 and should degrade the run, not kill it.
+    """
+
+    def __init__(self, status, url, body):
+        self.status = status
+        self.url = url
+        self.body = body
+        super().__init__(f"HTTP {status} {url}\n{body[:600]}")
+
+
 class EbayClient:
     def __init__(self, token, marketplace_id):
         self.token = token
@@ -46,9 +60,7 @@ class EbayClient:
             )
             time.sleep(delay)
             delay *= 2
-        raise SystemExit(
-            f"[client] request failed: HTTP {last.status_code} {url}\n{last.text[:1000]}"
-        )
+        raise EbayApiError(last.status_code, url, last.text)
 
     # --- Taxonomy -------------------------------------------------------
     def default_category_tree_id(self):
@@ -77,15 +89,29 @@ class EbayClient:
         return resp.json()
 
     # --- Developer Analytics --------------------------------------------
+    def rate_limit_candidates(self):
+        """Host/param combinations to try for getRateLimits.
+
+        The documented host did not resolve against the live API, so this walks
+        the plausible variants rather than hardcoding one and failing blind.
+        """
+        path = "/developer/analytics/v1_beta/rate_limit"
+        for host in (config.API_HOST, config.APIZ_HOST):
+            yield f"{host}{path}", None
+            yield f"{host}{path}", {"api_context": "buy", "api_name": "Browse"}
+
     def rate_limits(self):
-        url = f"{config.APIZ_HOST}/developer/analytics/v1_beta/rate_limit"
-        resp = self.get(url, params={"api_context": "buy", "api_name": "Browse"},
-                        allow_status=(400, 403, 404))
-        if resp.status_code != 200:
-            print(f"[client] rate_limit unavailable: HTTP {resp.status_code} "
-                  f"{resp.text[:300]}")
-            return None
-        return resp.json()
+        for url, params in self.rate_limit_candidates():
+            resp = self.get(url, params=params,
+                            allow_status=(400, 401, 403, 404))
+            if resp.status_code == 200:
+                print(f"[client] rate limits from {url} params={params}")
+                return resp.json()
+            print(f"[client] rate_limit {url} params={params} -> "
+                  f"HTTP {resp.status_code}")
+        print("::warning::getRateLimits did not resolve on any known host; "
+              "continuing without a quota guard.")
+        return None
 
 
 def browse_remaining(payload):

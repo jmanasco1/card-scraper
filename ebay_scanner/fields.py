@@ -62,6 +62,7 @@ def build_record(summary, detail=None, first_seen=None):
         "sellerFeedbackPercentage": seller.get("feedbackPercentage"),
         "condition": item.get("condition") or summary.get("condition"),
         "conditionId": item.get("conditionId") or summary.get("conditionId"),
+        "epid": summary.get("epid") or item.get("epid"),
         "imageUrl": image.get("imageUrl"),
         "categoryId": summary.get("leafCategoryIds", [None])[0]
         if summary.get("leafCategoryIds") else item.get("categoryId"),

@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from . import auth, config, fields, query, store, taxonomy
-from .client import EbayClient, browse_remaining
+from .client import EbayApiError, EbayClient, browse_remaining
 from .summary import write_summary
 
 GET_ITEMS_BATCH = 20
@@ -72,16 +72,33 @@ def main():
     print(f"[collect] {len(new_ids)} new itemIds after dedupe")
 
     # --- Enrich with item detail for localizedAspects -------------------
+    # The Browse item-detail endpoints sit behind eBay's Buy API access grant.
+    # Without it this returns 403, which costs the aspects but not the run:
+    # everything item_summary/search provides is still collected.
     details = {}
-    if new_ids and cfg.get("enrich_with_get_items"):
+    aspects_available = bool(cfg.get("enrich_with_get_items"))
+    if new_ids and aspects_available:
         for batch in _chunks(new_ids, GET_ITEMS_BATCH):
-            body = client.get_items(batch)
+            try:
+                body = client.get_items(batch)
+            except EbayApiError as exc:
+                if exc.status in (401, 403):
+                    print(f"::warning::Item detail unavailable (HTTP {exc.status}): "
+                          "the application lacks eBay Buy API access, so "
+                          "localizedAspects (grader, grade, cert number, set, "
+                          "player, card number) cannot be collected. Listing "
+                          "fields from search are stored as normal.")
+                    aspects_available = False
+                    details = {}
+                    break
+                raise
             for item in body.get("items") or []:
                 if item.get("itemId"):
                     details[item["itemId"]] = item
             for warning in body.get("warnings") or []:
                 print(f"[collect] getItems warning: {warning.get('message')}")
-        print(f"[collect] fetched detail for {len(details)}/{len(new_ids)} items")
+        if aspects_available:
+            print(f"[collect] fetched detail for {len(details)}/{len(new_ids)} items")
 
     first_seen = started.isoformat()
     records = [
@@ -114,6 +131,7 @@ def main():
         categories=categories,
         token_minted=minted,
         partition=path.name if path else None,
+        aspects_available=aspects_available,
     )
 
     # Signal to the workflow whether a commit is warranted.
