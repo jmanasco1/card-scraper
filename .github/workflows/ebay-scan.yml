@@ -26,6 +26,7 @@ on:
           - probe-rate
           - probe-recheck
           - probe-slice
+          - backfill
           - recheck
           - enrich
       max_pages:
@@ -111,6 +112,29 @@ jobs:
       - name: Probe re-check routes
         if: ${{ inputs.mode == 'probe-recheck' }}
         run: python -m ebay_scanner.probe_recheck
+
+      - name: Backfill slice inventory
+        id: backfill
+        if: ${{ inputs.mode == 'backfill' }}
+        run: |
+          python -m ebay_scanner.backfill
+          { echo '## Backfill'; echo; echo '```'; \
+            cat backfill_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit backfill data
+        if: ${{ inputs.mode == 'backfill' && steps.backfill.outputs.new_count != '0' }}
+        run: |
+          git config user.name "card-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/
+          if git diff --staged --quiet; then echo "nothing staged"; exit 0; fi
+          git commit -m "Backfill: ${{ steps.backfill.outputs.new_count }} slice listings"
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:${GITHUB_REF_NAME}; then exit 0; fi
+            git pull --rebase origin ${GITHUB_REF_NAME} || true
+            sleep $((2 ** attempt))
+          done
+          echo "::error::Could not push backfill data."; exit 1
 
       - name: Probe slice density
         if: ${{ inputs.mode == 'probe-slice' }}

@@ -15,9 +15,9 @@ from . import auth, config, query, store
 from .client import EbayClient, browse_remaining
 
 
-def slice_params(cfg, offset, window=None):
+def slice_params(cfg, offset, window=None, sl=None):
     params = query.search_params(cfg, offset)
-    sl = cfg.get("slice") or {}
+    sl = sl or {}
     base = params.get("aspect_filter") or f"categoryId:{cfg['category_ids'][0]}"
     extra = sl.get("aspect_filter")
     if extra:
@@ -45,11 +45,13 @@ def main():
     if remaining is not None:
         print(f"[backfill] quota {remaining}/{limit}")
         budget = max(0, min(budget, remaining - min_quota))
-    print(f"[backfill] slice={json.dumps(cfg.get('slice') or {})}")
+    print(f"[backfill] slices={[s['name'] for s in (cfg.get('slices') or [])]}")
     print(f"[backfill] budget={budget} calls, {days}d lookback in {hours}h windows")
 
     seen = store.load_seen_ids()
     print(f"[backfill] {len(seen)} itemIds already stored")
+    slices = cfg.get("slices") or []
+    per_slice = max(1, budget // max(1, len(slices)))
 
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     fmt = "%Y-%m-%dT%H:%M:%S.000Z"
@@ -60,8 +62,11 @@ def main():
 
     # Newest windows first: recent standing inventory is the most relevant
     # comparison set, and older listings age out of the 45-day reference rule.
-    for step in range(int(days * 24 / hours)):
-        if client.call_count >= budget:
+    for sl in slices:
+      slice_budget = min(budget, client.call_count + per_slice)
+      print(f"\n[backfill] === {sl['name']} ({sl['set']} {sl['grader']} {sl['grade']}) ===")
+      for step in range(int(days * 24 / hours)):
+        if client.call_count >= slice_budget:
             print("[backfill] budget exhausted")
             break
         end = now - timedelta(hours=hours * step)
@@ -69,9 +74,9 @@ def main():
         window = f"itemStartDate:[{start.strftime(fmt)}..{end.strftime(fmt)}]"
         total, got = None, 0
         for page in range(int(cfg.get("backfill_max_pages", 25))):
-            if client.call_count >= budget:
+            if client.call_count >= slice_budget:
                 break
-            body = client.search(slice_params(cfg, page * cfg["limit"], window))
+            body = client.search(slice_params(cfg, page * cfg["limit"], window, sl))
             if total is None:
                 total = body.get("total")
             items = body.get("itemSummaries") or []
@@ -81,6 +86,12 @@ def main():
                     seen.add(iid)
                     rec = fields.build_record(item, None, first_seen=started)
                     rec["source"] = "backfill"
+                    # The query pinned these, so they are known without any
+                    # per-item enrichment call.
+                    rec["sliceName"] = sl["name"]
+                    rec["set_name"] = sl["set"]
+                    rec["grader"] = sl["grader"]
+                    rec["grade"] = sl["grade"]
                     day = (rec.get("itemCreationDate") or started)[:10]
                     by_day.setdefault(day, []).append(rec)
                     got += 1
@@ -88,8 +99,10 @@ def main():
                 break
         windows_done += 1
         new_total += got
-        print(f"[backfill] {start:%Y-%m-%d %H:%M} +{hours}h  total={total}  new={got}"
-              f"  (calls {client.call_count}/{budget})")
+        print(f"[backfill] {start:%Y-%m-%d} +{hours}h  total={total}  new={got}"
+              f"  (calls {client.call_count}/{slice_budget})")
+        if total == 0:
+            break
 
     # Partition by the listing's own creation date, not today's, so the
     # date-partitioned layout keeps meaning.

@@ -27,5 +27,33 @@
   "recheck_min_age_hours": 1,
   "enrich_max_calls_per_run": 100,
   "enrich_min_quota": 800,
-  "enrich_strategy": "newest"
+  "enrich_strategy": "newest",
+  "slices": [
+    {
+      "name": "2023-prizm-psa10",
+      "set": "2023 Panini Prizm",
+      "grader": "PSA",
+      "grade": "10",
+      "aspect_filter": "Professional Grader:{Professional Sports Authenticator (PSA)},Grade:{10},Set:{2023 Panini Prizm}"
+    },
+    {
+      "name": "2022-prizm-psa10",
+      "set": "2022 Panini Prizm",
+      "grader": "PSA",
+      "grade": "10",
+      "aspect_filter": "Professional Grader:{Professional Sports Authenticator (PSA)},Grade:{10},Set:{2022 Panini Prizm}"
+    },
+    {
+      "name": "2022-bowman-chrome-psa10",
+      "set": "2022 Bowman Chrome",
+      "grader": "PSA",
+      "grade": "10",
+      "aspect_filter": "Professional Grader:{Professional Sports Authenticator (PSA)},Grade:{10},Set:{2022 Bowman Chrome}"
+    }
+  ],
+  "backfill_max_calls": 700,
+  "backfill_lookback_days": 120,
+  "backfill_window_hours": 72,
+  "backfill_max_pages": 50,
+  "backfill_min_quota": 500
 }

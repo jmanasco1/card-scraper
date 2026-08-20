@@ -175,6 +175,24 @@ def _signature(tokens, limit=4):
 def bucket_key(listing, aspect=None):
     """Return (key, method, reason). key is None when the listing cannot be
     bucketed, and reason says which field was missing."""
+    # Slice-collected listings had set, grader and grade pinned by the query
+    # itself, so those three are known exactly with no enrichment call. Within
+    # a fixed set the card number determines the player, so player is stored
+    # as metadata rather than required in the key — requiring a title-parsed
+    # player here would split the same card into several buckets.
+    if listing.get("sliceName") and listing.get("set_name"):
+        year, set_core = split_year(listing["set_name"])
+        grader = normalize_grader(listing.get("grader"))
+        grade = normalize_grade(listing.get("grade"))
+        card_number = normalize_card_number(listing.get("card_number"))
+        if not card_number:
+            parsed = parse_title(listing.get("title"))
+            card_number = parsed["card_number"]
+        if not card_number:
+            return None, "slice", "missing:card_number"
+        return (f"{year or '____'}|{set_core}|{card_number}"
+                f"|{grader}|{grade}"), "slice", None
+
     if aspect:
         year, set_core = split_year(aspect.get("set_name"))
         player = normalize_player(aspect.get("player"))
