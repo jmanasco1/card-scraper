@@ -17,6 +17,11 @@ REFERENCES = config.DATA_DIR / "references.jsonl"
 SNAPSHOTS = config.DATA_DIR / "reference_snapshots.jsonl"
 MAX_AGE_DAYS = 45
 MIN_COMPS = 5
+# A bucket whose comps are all newly-listed is not a picture of the market —
+# it is a picture of today's arrivals, which skews high because aged cheap
+# inventory is invisible to the collector. Require evidence that the standing
+# inventory was actually swept for this card.
+MIN_STANDING_COMPS = 2
 REFERENCE_LOWEST_N = 5
 
 
@@ -80,7 +85,7 @@ def build(rows, aspects, gone, now=None, exclude_item=None):
             buckets[key].append((r, method))
 
     references, stats = {}, {"buckets": len(buckets), "stale_dropped": 0,
-                             "too_few": 0}
+                             "too_few": 0, "no_standing": 0}
     for key, entries in buckets.items():
         fresh = []
         for r, method in entries:
@@ -92,6 +97,10 @@ def build(rows, aspects, gone, now=None, exclude_item=None):
                 fresh.append((r, method))
         if len(fresh) < MIN_COMPS:
             stats["too_few"] += 1
+            continue
+        standing = sum(1 for r, _ in fresh if r.get("source") == "backfill")
+        if standing < MIN_STANDING_COMPS:
+            stats["no_standing"] = stats.get("no_standing", 0) + 1
             continue
 
         prices = sorted(r["price"] for r, _ in fresh)
@@ -114,6 +123,7 @@ def build(rows, aspects, gone, now=None, exclude_item=None):
             "oldest_days": max(ages) if ages else None,
             "newest_days": min(ages) if ages else None,
             "match_methods": sorted(methods),
+            "standing_comps": standing,
             # No timestamp on the row itself: it would make every bucket differ
             # on every run even when nothing about the market changed. The daily
             # snapshot file carries the time dimension instead.
@@ -159,6 +169,8 @@ def main():
         f"listings covered by those buckets: {covered:,} "
         f"({covered/max(1,total_listings)*100:.1f}% of volume)",
         f"buckets suppressed for <{MIN_COMPS} comps: {stats['too_few']:,}",
+        f"buckets suppressed for <{MIN_STANDING_COMPS} standing comps: "
+        f"{stats['no_standing']:,}",
         f"listings dropped as stale (>{MAX_AGE_DAYS}d): {stats['stale_dropped']:,}",
     ]
     print("\n".join("[reference] " + l for l in lines))

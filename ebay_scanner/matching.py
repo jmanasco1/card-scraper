@@ -62,6 +62,16 @@ PARALLELS = [
     "pink lazer", "gold lazer", "no huddle", "fast break", "snakeskin",
     "choice", "disco", "hyper", "mojo", "shimmer", "atomic", "xfractor",
     "x fractor", "superfractor", "refractor", "camo", "tiger", "wave",
+    "pink refractor", "blue refractor", "gold refractor", "red refractor",
+    "green refractor", "orange refractor", "purple refractor",
+    "black refractor", "sepia refractor", "aqua refractor", "teal refractor",
+    "yellow refractor", "bronze refractor", "white refractor",
+    "negative refractor", "atomic refractor", "prism refractor",
+    "speckle refractor", "raywave refractor", "mini diamond refractor",
+    "pink wave", "blue wave", "gold wave", "green wave", "orange wave",
+    "purple wave", "red wave", "aqua wave", "ray wave",
+    "pink prizm", "blue prizm", "gold prizm", "green prizm", "red prizm",
+    "orange prizm", "purple prizm", "black prizm", "camo prizm",
     "pulsar", "lazer", "laser", "sparkle", "genesis",
     "neon green", "neon orange", "neon pink", "flash", "scope",
     "silver", "gold", "black", "green", "orange", "purple", "pink", "blue",
@@ -226,6 +236,44 @@ def _signature(tokens, limit=4):
     return hashlib.sha1(joined.encode()).hexdigest()[:10]
 
 
+_CATALOG = None
+
+
+def load_catalog(path=None):
+    """Known set names, longest first, so 'Topps Chrome Update' beats 'Topps'."""
+    global _CATALOG
+    if _CATALOG is None:
+        import json
+        from pathlib import Path as _Path
+        from . import config
+        path = path or (config.DATA_DIR / "set_volumes.json")
+        try:
+            ranked = json.loads(_Path(path).read_text())["ranked"]
+        except (OSError, ValueError, KeyError):
+            _CATALOG = []
+            return _CATALOG
+        names = [r["set"] for r in ranked
+                 if r.get("set") and r["set"].lower() != "not specified"]
+        _CATALOG = sorted(({n: _flatten(n) for n in names}).items(),
+                          key=lambda kv: -len(kv[1]))
+    return _CATALOG
+
+
+def resolve_set(title):
+    """Match a title against the real set catalogue.
+
+    A brand-new listing carries no set aspect, and guessing the set from loose
+    token overlap is what produced buckets mixing different cards. Matching
+    against the closed list of set names eBay actually reports is far stronger:
+    either the title contains a real set name or it does not.
+    """
+    flat = _flatten(title)
+    for name, needle in load_catalog():
+        if needle in flat:
+            return name
+    return None
+
+
 def bucket_key(listing, aspect=None):
     """Return (key, method, reason). key is None when the listing cannot be
     bucketed, and reason says which field was missing."""
@@ -248,6 +296,18 @@ def bucket_key(listing, aspect=None):
                                   (listing.get("aspects") or {}).get("Parallel/Variety"))
         return (f"{year or '____'}|{set_core}|{card_number}|{parallel}"
                 f"|{grader}|{grade}"), "slice", None
+
+    if not listing.get("sliceName") and not aspect:
+        catalog_set = resolve_set(listing.get("title"))
+        if catalog_set:
+            parsed = parse_title(listing.get("title"))
+            grader, grade = parsed["grader"], parsed["grade"]
+            card_number = parsed["card_number"]
+            if grader and grade and card_number:
+                year, set_core = split_year(catalog_set)
+                parallel = parse_parallel(listing.get("title"))
+                return (f"{year or '____'}|{set_core}|{card_number}|{parallel}"
+                        f"|{grader}|{grade}"), "catalog", None
 
     if aspect:
         year, set_core = split_year(aspect.get("set_name"))
@@ -280,5 +340,6 @@ def bucket_key(listing, aspect=None):
         missing.append("descriptor")
     if missing:
         return None, "title", "missing:" + ",".join(missing)
-    return (f"{parsed['year']}|~{signature}|{parsed['card_number']}|~"
+    parallel = parse_parallel(listing.get("title"))
+    return (f"{parsed['year']}|~{signature}|{parsed['card_number']}|{parallel}"
             f"|{parsed['grader']}|{parsed['grade']}"), "title", None

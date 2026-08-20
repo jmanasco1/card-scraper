@@ -45,6 +45,14 @@ def build_slices(cfg):
                   if r.get("set") and r["set"].lower() != "not specified"]
         if floor:
             usable = [r for r in usable if r.get("listings", 0) >= floor]
+        # Volume alone admits high-print, low-value products. Excluding them by
+        # name buys budget for lower-volume sets that actually carry value.
+        excluded = [e.lower() for e in (cfg.get("slice_exclude") or [])]
+        if excluded:
+            before = len(usable)
+            usable = [r for r in usable
+                      if not any(e in r["set"].lower() for e in excluded)]
+            print(f"[backfill] excluded {before - len(usable)} sets by name")
         if cap:
             usable = usable[:cap]
         sets = [r["set"] for r in usable]

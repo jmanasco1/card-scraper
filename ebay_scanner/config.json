@@ -64,6 +64,16 @@
     }
   ],
   "backfill_slices_per_run": 40,
-  "slice_min_listings": 500,
-  "slice_top_sets": 0
+  "slice_min_listings": 300,
+  "slice_top_sets": 0,
+  "slice_exclude": [
+    "Leaf",
+    "Allen & Ginter",
+    "Allen and Ginter",
+    "Gypsy Queen",
+    "Sage",
+    "Pacific",
+    "Opeechee Premier",
+    "Score Board"
+  ]
 }

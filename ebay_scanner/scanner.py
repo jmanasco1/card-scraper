@@ -21,6 +21,11 @@ from . import config, matching, reference
 FLAGS = config.DATA_DIR / "flags.jsonl"
 
 ACT_MIN, ACT_MAX = 10.0, 800.0
+# Only alert from buckets whose key came from a trustworthy source. Title-parsed
+# keys guess the set from loose token overlap and are the weakest link: they
+# produced a bucket mixing plain Refractor with Pink Refractor across $25-$176.
+# Slices pin set/grader/grade in the query; aspects come from getItem.
+TRUSTED_METHODS = ("slice", "aspects", "catalog")
 DISCOUNT = 0.70
 MAX_AGE_HOURS = 24
 MAX_ALERTS_PER_DAY = 20
@@ -146,6 +151,8 @@ def main():
         if not created or created < cutoff:
             continue
         key, method, _ = matching.bucket_key(r, aspects.get(r.get("itemId")))
+        if method not in TRUSTED_METHODS:
+            continue
         ref = references.get(key) if key else None
         if not ref or ref["comp_count"] < reference.MIN_COMPS:
             continue
