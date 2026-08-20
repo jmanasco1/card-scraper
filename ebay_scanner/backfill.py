@@ -25,13 +25,25 @@ def build_slices(cfg):
     if explicit:
         return explicit
     graders = cfg.get("slice_graders") or {}
+    sets = cfg.get("slice_sets")
+    if not sets:
+        # Ranked by live listing volume rather than hand-picked. 3,360 distinct
+        # sets exist; the top slice of them carries most of the tradeable volume.
+        path = config.DATA_DIR / "set_volumes.json"
+        try:
+            ranked = json.loads(path.read_text())["ranked"]
+        except (OSError, ValueError, KeyError):
+            print("[backfill] no set_volumes.json; run mode probe-sets first")
+            return []
+        sets = [r["set"] for r in ranked[:int(cfg.get("slice_top_sets", 40))]
+                if r["set"] and r["set"].lower() != "not specified"]
     out = []
     for grade in cfg.get("slice_grades") or []:
         value = graders.get(grade["grader"])
         if not value:
             print(f"[backfill] no aspect value for grader {grade['grader']}, skipping")
             continue
-        for set_name in cfg.get("slice_sets") or []:
+        for set_name in sets:
             out.append({
                 "name": f"{set_name}|{grade['grader']}{grade['grade']}".lower()
                         .replace(" ", "-"),
@@ -80,6 +92,24 @@ def main():
     seen = store.load_seen_ids()
     print(f"[backfill] {len(seen)} itemIds already stored")
     slices = build_slices(cfg)
+    per_run = int(cfg.get("backfill_slices_per_run", 0) or 0)
+    if per_run and len(slices) > per_run:
+        state_path = config.DATA_DIR / "backfill_state.json"
+        try:
+            done = set(json.loads(state_path.read_text()).get("covered", []))
+        except (OSError, ValueError):
+            done = set()
+        pending = [s for s in slices if s["name"] not in done]
+        if not pending:                      # full pass complete, start again
+            done, pending = set(), slices
+        slices = pending[:per_run]
+        done.update(s["name"] for s in slices)
+        config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(
+            {"covered": sorted(done), "total": len(build_slices(cfg))},
+            indent=2) + "\n")
+        print(f"[backfill] rotating: {len(slices)} slices this run, "
+              f"{len(done)}/{len(build_slices(cfg))} of the grid covered")
     per_slice = max(1, budget // max(1, len(slices)))
 
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)

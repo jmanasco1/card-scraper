@@ -28,7 +28,7 @@
   "enrich_max_calls_per_run": 100,
   "enrich_min_quota": 800,
   "enrich_strategy": "newest",
-  "backfill_max_calls": 1800,
+  "backfill_max_calls": 900,
   "backfill_lookback_days": 365,
   "backfill_window_hours": 168,
   "backfill_max_pages": 50,
@@ -41,16 +41,6 @@
     "CSG": "Certified Sports Guaranty (CSG)",
     "BVG": "Beckett Vintage Grading (BVG)"
   },
-  "slice_sets": [
-    "2023 Panini Prizm",
-    "2022 Panini Prizm",
-    "2021 Panini Prizm",
-    "2020 Panini Prizm",
-    "2019 Panini Prizm",
-    "2022 Topps Chrome",
-    "2021 Topps Chrome",
-    "2022 Bowman Chrome"
-  ],
   "slice_grades": [
     {
       "grader": "PSA",
@@ -72,5 +62,7 @@
       "grader": "CGC",
       "grade": "10"
     }
-  ]
+  ],
+  "slice_top_sets": 60,
+  "backfill_slices_per_run": 25
 }

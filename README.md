@@ -422,9 +422,20 @@ compare against.
 
 The fix is to pin `Set`, `Professional Grader` and `Grade` in the aspect filter.
 All three are then known from the query itself, no enrichment call needed, and
-the corpus concentrates on cards that actually repeat. Slices live in
-`config.json`; the current three are 2023 and 2022 Panini Prizm PSA 10 and 2022
-Bowman Chrome PSA 10.
+the corpus concentrates on cards that actually repeat. **Slices are chosen by volume, not by taste.** 3,360 distinct Set values exist
+in the category; `mode: probe-sets` reads eBay's Set distribution under each
+grade tier and writes `data/set_volumes.json` ranked by live listing count. The
+grid is then the top `slice_top_sets` sets crossed with `slice_grades` — 59
+sets x 5 tiers = 295 slices covering PSA 10/9, BGS 9.5, SGC 10 and CGC 10.
+
+Two traps this avoids. Hand-picking missed the highest-volume set entirely
+(`2024 Bowman`, 41,642 listings). And basketball sets are named across two
+years, so `2023-24 Panini Prizm` is a *different* Set value from `2023 Panini
+Prizm` — picking by hand silently dropped one of them.
+
+A run cannot fill 295 slices inside the daily call budget, so backfill rotates:
+`backfill_slices_per_run` slices per run, tracked in `data/backfill_state.json`,
+restarting once the grid is fully covered.
 
 `python -m ebay_scanner.backfill` walks `itemStartDate` windows backwards to
 pull the slice's **standing inventory**, not just newly-listed items — 200
