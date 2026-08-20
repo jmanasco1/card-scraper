@@ -118,6 +118,8 @@ jobs:
         id: scan
         if: ${{ inputs.mode == 'scan' || github.event.schedule == '*/15 * * * *' }}
         env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           python -m ebay_scanner.reference

@@ -478,6 +478,11 @@ alerting. Each flag stores the reference, comp count, discount and the bucket's
 full distribution at flag time, so false positives can be reviewed after the
 fact.
 
+**Delivery is Telegram** (free, and unlike ntfy's iOS app there is nothing to
+buy). Set repo secrets `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`. `NTFY_TOPIC`
+still works as a fallback if both Telegram secrets are absent. With no channel
+configured the run records flags and logs a warning rather than failing.
+
 Alerts are capped at 20/day. Exceeding the cap is treated as a signal that the
 reference logic is wrong, so the run logs a warning and sends nothing rather
 than spamming.

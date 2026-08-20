@@ -54,25 +54,47 @@ def flags_today(day):
     return count
 
 
-def notify(flag, topic):
-    """ntfy.sh: no account, no API key, just a topic name."""
-    title = f"${flag['price']:.0f} · {flag['discount_pct']:.0f}% under ref"
-    body = (f"{flag['title'][:140]}\n\n"
-            f"price ${flag['price']:.2f}  |  reference ${flag['reference']:.2f}\n"
-            f"discount {flag['discount_pct']:.0f}%  |  {flag['comp_count']} comps\n"
-            f"{flag['bucket']}")
-    req = urllib.request.Request(
-        f"https://ntfy.sh/{urllib.parse.quote(topic)}",
-        data=body.encode("utf-8"),
-        headers={"Title": title, "Priority": "default", "Tags": "money_with_wings",
-                 "Click": flag["itemWebUrl"] or ""},
-    )
+def _post(url, data, headers=None):
+    req = urllib.request.Request(url, data=data, headers=headers or {})
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
             return resp.status in (200, 201)
     except Exception as exc:                       # noqa: BLE001
         print(f"[scan] notify failed: {exc}")
         return False
+
+
+def notify(flag):
+    """Telegram first (free, reliable on both phones), ntfy as a fallback.
+
+    Returns True when at least one channel accepted the message.
+    """
+    price, ref = flag["price"], flag["reference"]
+    line1 = f"*{flag['discount_pct']:.0f}% under reference*"
+    line2 = (f"${price:.2f}  vs  ${ref:.2f}\n"
+             f"{flag['comp_count']} comps · {flag['bucket']}")
+    title = (flag["title"] or "")[:150]
+    url = flag.get("itemWebUrl") or ""
+
+    token = os.environ.get("TELEGRAM_TOKEN", "").strip()
+    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if token and chat:
+        text = f"{line1}\n{title}\n\n{line2}\n\n{url}"
+        payload = urllib.parse.urlencode({
+            "chat_id": chat, "text": text, "parse_mode": "Markdown",
+            "disable_web_page_preview": "false"}).encode()
+        if _post(f"https://api.telegram.org/bot{token}/sendMessage", payload,
+                 {"Content-Type": "application/x-www-form-urlencoded"}):
+            return True
+
+    topic = os.environ.get("NTFY_TOPIC", "").strip()
+    if topic:
+        body = f"{title}\n\n${price:.2f} vs ${ref:.2f}\n{line2}"
+        return _post(f"https://ntfy.sh/{urllib.parse.quote(topic)}",
+                     body.encode("utf-8"),
+                     {"Title": f"${price:.0f} · {flag['discount_pct']:.0f}% under",
+                      "Click": url})
+    return False
 
 
 def main():
@@ -130,10 +152,15 @@ def main():
     else:
         to_send = candidates[:max(0, room)]
 
-    topic = os.environ.get("NTFY_TOPIC", "").strip()
+    configured = bool(os.environ.get("TELEGRAM_TOKEN") and
+                      os.environ.get("TELEGRAM_CHAT_ID")) or \
+                 bool(os.environ.get("NTFY_TOPIC"))
+    if to_send and not configured:
+        print("::warning::No notification channel configured; flags recorded "
+              "but nothing sent. Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID.")
     sent = 0
     for flag in to_send:
-        if topic and notify(flag, topic):
+        if configured and notify(flag):
             flag["notified"] = True
             sent += 1
         else:
