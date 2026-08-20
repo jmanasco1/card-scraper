@@ -19,6 +19,7 @@ on:
           - probe-neither
           - probe-rate
           - probe-recheck
+          - recheck
       max_pages:
         description: "Override pages per run (blank = config.json value)"
         required: false
@@ -96,6 +97,33 @@ jobs:
       - name: Probe re-check routes
         if: ${{ inputs.mode == 'probe-recheck' }}
         run: python -m ebay_scanner.probe_recheck
+
+      - name: Re-check stored listings
+        id: recheck
+        if: ${{ inputs.mode == 'recheck' }}
+        run: |
+          python -m ebay_scanner.recheck
+          { echo '## Listing re-check'; echo; echo '```'; \
+            cat recheck_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit lifecycle data
+        if: ${{ inputs.mode == 'recheck' && steps.recheck.outputs.newly_gone != '0' }}
+        run: |
+          git config user.name "card-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/lifecycle.jsonl
+          if git diff --staged --quiet; then
+            echo "Nothing staged; skipping commit."
+            exit 0
+          fi
+          git commit -m "Re-check: ${{ steps.recheck.outputs.newly_gone }} listings gone $(date -u +%FT%TZ)"
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:${GITHUB_REF_NAME}; then exit 0; fi
+            git pull --rebase origin ${GITHUB_REF_NAME} || true
+            sleep $((2 ** attempt))
+          done
+          echo "::error::Could not push lifecycle data after 4 attempts."
+          exit 1
 
       - name: Collect listings
         id: collect
