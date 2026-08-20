@@ -478,10 +478,13 @@ off a comp set of four.
 
 ### BIN scanner
 
-Flags a listing only when every condition holds: price within $75–$400, bucket
+Flags a listing only when every condition holds: price within $10–$800, bucket
 has a valid reference, price at or under 70% of it, and the listing is under 24
-hours old. The $20 collection floor is for building references, never for
-alerting. Each flag stores the reference, comp count, discount and the bucket's
+hours old. Collection and alerting now share the $10–$800 band.
+
+**Alerts rank by dollars saved, not discount percent.** With a $10 floor a 30%
+discount on a $12 card saves $4 and would otherwise displace $180 off a $600
+card under the 20/day cap. Each flag stores the reference, comp count, discount and the bucket's
 full distribution at flag time, so false positives can be reviewed after the
 fact.
 

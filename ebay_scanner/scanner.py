@@ -20,7 +20,7 @@ from . import config, matching, reference
 
 FLAGS = config.DATA_DIR / "flags.jsonl"
 
-ACT_MIN, ACT_MAX = 75.0, 400.0
+ACT_MIN, ACT_MAX = 10.0, 800.0
 DISCOUNT = 0.70
 MAX_AGE_HOURS = 24
 MAX_ALERTS_PER_DAY = 20
@@ -72,7 +72,8 @@ def notify(flag):
     """
     price, ref = flag["price"], flag["reference"]
     line1 = f"*{flag['discount_pct']:.0f}% under reference*"
-    line2 = (f"${price:.2f}  vs  ${ref:.2f}\n"
+    saving = flag.get("saving", ref - price)
+    line2 = (f"${price:.2f}  vs  ${ref:.2f}   (save ${saving:.2f})\n"
              f"{flag['comp_count']} comps · {flag['bucket']}")
     title = (flag["title"] or "")[:150]
     url = flag.get("itemWebUrl") or ""
@@ -174,7 +175,11 @@ def main():
             "flaggedAt": now.isoformat(),
         })
 
-    candidates.sort(key=lambda c: -c["discount_pct"])
+    for c in candidates:
+        c["saving"] = round(c["reference"] - c["price"], 2)
+    # Rank by dollars saved, not discount percent. Under a 20/day cap a 30%
+    # discount on a $12 card ($4) must not displace $180 off a $600 card.
+    candidates.sort(key=lambda c: (-c["saving"], -c["discount_pct"]))
     room = MAX_ALERTS_PER_DAY - sent_today
     over_limit = len(candidates) > room
 
@@ -214,9 +219,9 @@ def main():
              f"cap exceeded (suppressed): {over_limit}"]
     print("\n".join("[scan] " + l for l in lines))
     for flag in candidates[:10]:
-        print(f"[scan]   -{flag['discount_pct']:.0f}%  ${flag['price']:.2f} vs "
-              f"${flag['reference']:.2f} (n={flag['comp_count']})  "
-              f"{(flag['title'] or '')[:58]}")
+        print(f"[scan]   save ${flag['saving']:>7.2f}  -{flag['discount_pct']:.0f}%  "
+              f"${flag['price']:.2f} vs ${flag['reference']:.2f} "
+              f"(n={flag['comp_count']})  {(flag['title'] or '')[:46]}")
     (config.ROOT / "scan_summary.txt").write_text("\n".join(lines) + "\n")
 
     if os.environ.get("GITHUB_OUTPUT"):

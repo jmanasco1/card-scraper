@@ -15,6 +15,35 @@ from . import auth, config, query, store
 from .client import EbayClient, browse_remaining
 
 
+def build_slices(cfg):
+    """Cross-product of configured sets and grade tiers.
+
+    Every slice pins Set, Professional Grader and Grade in the aspect filter,
+    so all three are known from the query and need no enrichment call.
+    """
+    explicit = cfg.get("slices")
+    if explicit:
+        return explicit
+    graders = cfg.get("slice_graders") or {}
+    out = []
+    for grade in cfg.get("slice_grades") or []:
+        value = graders.get(grade["grader"])
+        if not value:
+            print(f"[backfill] no aspect value for grader {grade['grader']}, skipping")
+            continue
+        for set_name in cfg.get("slice_sets") or []:
+            out.append({
+                "name": f"{set_name}|{grade['grader']}{grade['grade']}".lower()
+                        .replace(" ", "-"),
+                "set": set_name,
+                "grader": grade["grader"],
+                "grade": grade["grade"],
+                "aspect_filter": (f"Professional Grader:{{{value}}},"
+                                  f"Grade:{{{grade['grade']}}},Set:{{{set_name}}}"),
+            })
+    return out
+
+
 def slice_params(cfg, offset, window=None, sl=None):
     params = query.search_params(cfg, offset)
     sl = sl or {}
@@ -50,7 +79,7 @@ def main():
 
     seen = store.load_seen_ids()
     print(f"[backfill] {len(seen)} itemIds already stored")
-    slices = cfg.get("slices") or []
+    slices = build_slices(cfg)
     per_slice = max(1, budget // max(1, len(slices)))
 
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
