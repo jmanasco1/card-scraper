@@ -11,9 +11,15 @@ def _files():
     return sorted(config.DATA_DIR.glob("*.jsonl"))
 
 
-def load_seen_ids():
-    """Every itemId already stored, across all partitions."""
+def load_index():
+    """Return (seen itemIds, newest itemCreationDate) across all partitions.
+
+    The newest stored listing time is what makes a coverage gap detectable:
+    if a run's oldest fetched listing is newer than this, listings appeared
+    and disappeared from the pagination window between runs.
+    """
     seen = set()
+    newest = None
     for path in _files():
         with open(path) as fh:
             for line in fh:
@@ -21,14 +27,22 @@ def load_seen_ids():
                 if not line:
                     continue
                 try:
-                    item_id = json.loads(line).get("itemId")
+                    record = json.loads(line)
                 except ValueError:
                     # A truncated final line shouldn't take out the whole run.
                     print(f"[store] skipping unparseable line in {path.name}")
                     continue
+                item_id = record.get("itemId")
                 if item_id:
                     seen.add(item_id)
-    return seen
+                created = record.get("itemCreationDate")
+                if created and (newest is None or created > newest):
+                    newest = created
+    return seen, newest
+
+
+def load_seen_ids():
+    return load_index()[0]
 
 
 def total_stored():

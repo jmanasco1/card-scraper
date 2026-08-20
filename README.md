@@ -211,6 +211,38 @@ is stored on every row instead, and is what made the test above possible.
 Reproduce any of this with `mode: probe-filters` or `mode: probe-neither` in the
 workflow dispatch.
 
+### Why the price floor is $20, not $75
+
+The $75 floor was an *acting* threshold applied at *collection* time, which
+censors the data. For any card whose market value sits under $75, the only
+listings that clear the filter are the overpriced ones — so any reference value
+later computed from that sample is biased upward by construction, and no amount
+of post-processing recovers the listings that were never recorded.
+
+Widening to $20 costs less than expected. Measured live:
+
+| Band | Matching listings | New listings/min |
+|---|---|---|
+| `[75..400]` | 1,377,693 | 10.6 |
+| `[20..400]` | 3,054,089 | 20.0 |
+
+Inventory grows 2.2x and arrival rate 1.9x — not the ~3x assumed. At 20
+listings/min, a 15-minute sweep needs ~301 listings (2 pages); the configured 6
+pages absorbs ~60 minutes of arrivals, which matters because GitHub defers
+`*/15` schedules under load.
+
+Filtering to an acting band stays available at query time and always will.
+
+### Coverage gap detection
+
+Page counts alone cannot tell you whether listings were missed. Each run
+therefore compares the **oldest listing it fetched** against the **newest
+listing already stored**. If the oldest fetched is newer, listings were created
+and pushed beyond the pagination window between runs — a real, unbackfillable
+gap — and the run emits a workflow warning naming the page count and cap state.
+The Step Summary reports pages fetched, how far back the run reached, and
+whether coverage is complete.
+
 ## Rate limits
 
 The Browse API allows **5,000 calls/day** at the application level. A typical
@@ -287,7 +319,7 @@ at any time.
 | Key | Default | Meaning |
 |---|---|---|
 | `category_ids` | `["261328"]` | Verified live as `Trading Card Singles` (leaf) |
-| `price_min` / `price_max` | `75` / `400` | USD band |
+| `price_min` / `price_max` | `20` / `400` | USD band |
 | `buying_options` | `["FIXED_PRICE"]` | Excludes auctions |
 | `sort` | `newlyListed` | |
 | `limit` / `max_pages` | `200` / `6` | Up to 1,200 listings per run |

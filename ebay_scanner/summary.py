@@ -36,6 +36,10 @@ def write_summary(**kw):
         fh.write(f"| Quota remaining (at start) | {_fmt(kw.get('remaining'))} |\n")
         fh.write(f"| Quota remaining (estimated now) | {_fmt(kw.get('estimated_remaining'))} |\n")
         fh.write(f"| Daily limit | {_fmt(kw.get('daily_limit'))} |\n")
+        cap = " (hit page cap)" if kw.get("hit_page_cap") else ""
+        fh.write(f"| Pages fetched | {_fmt(kw.get('pages_fetched'))}{cap} |\n")
+        fh.write(f"| Reached back to | {_fmt(kw.get('oldest_fetched'))} |\n")
+        fh.write(f"| Coverage | {'**GAP — listings missed**' if kw.get('coverage_gap') else 'complete'} |\n")
         fh.write(f"| Token | {'newly minted' if kw.get('token_minted') else 'from cache'} |\n")
         if kw.get("partition"):
             fh.write(f"| Partition written | `data/{kw['partition']}` |\n")
