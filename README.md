@@ -266,3 +266,34 @@ export EBAY_CLIENT_ID=...  EBAY_CLIENT_SECRET=...
 python -m ebay_scanner.probe      # dump live response shapes
 python -m ebay_scanner.collect    # real run
 ```
+
+## Browsable listings page
+
+Every run regenerates `docs/index.html` — a single self-contained page with all
+collected listings, searchable, filterable and sortable in the browser. No build
+step, no external assets, no network calls; it works opened straight from disk.
+
+```bash
+python -m ebay_scanner.build_page          # writes docs/index.html
+open docs/index.html                       # macOS
+```
+
+Because this repository is public, the same file can be served by **GitHub
+Pages**: Settings → Pages → Source *Deploy from a branch*, branch = default,
+folder = `/docs`. The page then updates itself on every scheduled run.
+
+The page embeds the most recent 5,000 listings by default (`--limit`). Anything
+beyond that stays queryable through the SQLite loader.
+
+### A caveat on grader and grade
+
+Those two columns are **parsed from the listing title**, not read from eBay's
+item aspects, and the page says so. `item_summary/search` does not return
+aspects, and the bulk `getItems` call that does requires a Buy API grant this
+application has not been given — so `detailFetched` is `false` and every aspect
+column in the stored JSONL is empty.
+
+Titles carry a recognisable grader and grade about **82%** of the time, which is
+enough to filter on. The parse is display-only and is deliberately never written
+back into the JSONL, so the stored data stays purely API-derived. If the Buy API
+grant comes through, real aspects take precedence automatically.

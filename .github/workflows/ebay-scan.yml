@@ -82,12 +82,16 @@ jobs:
         if: ${{ inputs.mode != 'probe' }}
         run: python -m ebay_scanner.collect
 
+      - name: Build listings page
+        if: ${{ inputs.mode != 'probe' }}
+        run: python -m ebay_scanner.build_page
+
       - name: Commit new data
         if: ${{ inputs.mode != 'probe' && steps.collect.outputs.new_count != '0' }}
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/
+          git add data/ docs/
           if git diff --staged --quiet; then
             echo "Nothing staged; skipping commit."
             exit 0
