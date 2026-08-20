@@ -100,12 +100,17 @@ def main():
             "bestOffer": best_offer,
             "bucket": matching.bucket_key(rows_only[0],
                                           aspects.get(rows_only[0].get("itemId")))[0],
-            "updatedAt": now.isoformat(),
         })
 
+    # Only chains with a real history are persisted. Single-episode chains are
+    # recomputable from the listing corpus on any run, and writing ~19k of them
+    # rewrote 39k lines of JSONL every 15 minutes — churn the date-partitioned
+    # design exists to avoid. Sorted by chainId so diffs stay minimal and
+    # reviewable rather than reshuffling on every run.
+    persisted = [r for r in records if r["episodes"] >= 2]
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(EPISODES, "w") as fh:
-        for rec in sorted(records, key=lambda r: -r["episodes"]):
+        for rec in sorted(persisted, key=lambda r: r["chainId"]):
             fh.write(json.dumps(rec, sort_keys=True, ensure_ascii=False) + "\n")
 
     multi = [r for r in records if r["episodes"] >= 2]
@@ -117,7 +122,7 @@ def main():
         f"cert numbers found: {cert_hits:,} ({cert_hits/max(1,len(rows))*100:.1f}%)",
         f"chains: {len(records):,}  (cert {by_conf['cert']:,}, "
         f"inferred {by_conf['inferred']:,})",
-        f"chains with 2+ episodes: {len(multi):,}",
+        f"chains with 2+ episodes: {len(multi):,} (only these are stored)",
     ]
     print("\n".join("[episodes] " + l for l in lines))
     for rec in sorted(multi, key=lambda r: -r["episodes"])[:8]:

@@ -114,7 +114,9 @@ def build(rows, aspects, gone, now=None, exclude_item=None):
             "oldest_days": max(ages) if ages else None,
             "newest_days": min(ages) if ages else None,
             "match_methods": sorted(methods),
-            "computed_at": now.isoformat(),
+            # No timestamp on the row itself: it would make every bucket differ
+            # on every run even when nothing about the market changed. The daily
+            # snapshot file carries the time dimension instead.
         }
     return references, stats, buckets
 
@@ -126,7 +128,7 @@ def main():
 
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(REFERENCES, "w") as fh:
-        for rec in sorted(references.values(), key=lambda r: -r["comp_count"]):
+        for rec in sorted(references.values(), key=lambda r: r["bucket"]):
             fh.write(json.dumps(rec, sort_keys=True) + "\n")
 
     # One row per bucket per day, so reference drift is visible later.

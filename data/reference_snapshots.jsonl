@@ -66,3 +66,6 @@
 {"bucket": "2026|~a4c3870cbf|ova1|~|CGC|10", "comp_count": 5, "day": "2026-08-20", "median": 79.99, "reference": 79.99}
 {"bucket": "1998|~8c47a2683d|42|~|BGS|8.5", "comp_count": 5, "day": "2026-08-20", "median": 74.0, "reference": 74.0}
 {"bucket": "2025|~8e7bb80a69|os-7|~|BGS|9.5", "comp_count": 6, "day": "2026-08-20", "median": 45.0, "reference": 45.0}
+{"bucket": "2023|panini prizm|343|green|PSA|10", "comp_count": 5, "day": "2026-08-20", "median": 40.0, "reference": 40.0}
+{"bucket": "2023|panini prizm|339|purple|PSA|10", "comp_count": 5, "day": "2026-08-20", "median": 300.0, "reference": 300.0}
+{"bucket": "2023|panini prizm|6|green ice|PSA|10", "comp_count": 5, "day": "2026-08-20", "median": 69.99, "reference": 69.99}
