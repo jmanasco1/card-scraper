@@ -96,14 +96,29 @@ def main():
     gone = load_gone()
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback)
 
+    min_age = timedelta(hours=float(cfg.get("recheck_min_age_hours", 1)))
+    now_dt = datetime.now(timezone.utc)
+    horizon = now_dt - min_age
+
     buckets = defaultdict(list)
+    skipped_young = 0
     for r in records:
         if r.get("itemId") in gone:
             continue
         key = window_key(r.get("itemCreationDate"), hours)
-        if key and key >= cutoff:
-            buckets[key].append(r)
+        if not key or key < cutoff:
+            continue
+        if key + timedelta(hours=hours) > horizon:
+            # Window still open or too fresh — sweeping it would either lose the
+            # date filter or count listings that have had no chance to sell.
+            skipped_young += 1
+            continue
+        buckets[key].append(r)
+    if skipped_young:
+        print(f"[recheck] {skipped_young} listing(s) skipped: window not yet "
+              f"closed + aged {min_age}")
 
+    print(f"[recheck] window={hours}h min_age={min_age} max_pages={max_pages}")
     print(f"[recheck] {len(records)} stored, {len(gone)} already gone, "
           f"{sum(len(v) for v in buckets.values())} live candidates "
           f"across {len(buckets)} window(s) of {hours}h")

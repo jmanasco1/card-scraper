@@ -20,8 +20,9 @@
   },
   "enrich_with_get_items": true,
   "category_cache_days": 7,
-  "recheck_window_hours": 2,
+  "recheck_window_hours": 1,
   "recheck_lookback_days": 7,
-  "recheck_max_windows": 12,
-  "recheck_max_pages": 12
+  "recheck_max_windows": 8,
+  "recheck_max_pages": 20,
+  "recheck_min_age_hours": 1
 }
