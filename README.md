@@ -525,9 +525,11 @@ buy). Set repo secrets `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`. `NTFY_TOPIC`
 still works as a fallback if both Telegram secrets are absent. With no channel
 configured the run records flags and logs a warning rather than failing.
 
-Alerts are capped at 20/day. Exceeding the cap is treated as a signal that the
-reference logic is wrong, so the run logs a warning and sends nothing rather
-than spamming.
+A busy day is not a fault condition, so there is no tripwire: alerts send
+whatever qualifies, ranked by dollars saved. `MAX_ALERTS_PER_DAY` (default 200,
+override with `ALERT_DAILY_CAP`) exists only so a broken reference cannot send
+thousands of messages — and on overflow it still sends the largest, with the
+remainder recorded in `flags.jsonl`.
 
 ### Episodes (capture only)
 

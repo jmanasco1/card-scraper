@@ -28,7 +28,10 @@ ACT_MIN, ACT_MAX = 10.0, 800.0
 TRUSTED_METHODS = ("slice", "aspects", "catalog")
 DISCOUNT = 0.70
 MAX_AGE_HOURS = 24
-MAX_ALERTS_PER_DAY = 20
+# A busy day is not a fault condition. This is only a runaway guard so a
+# broken reference cannot send thousands of messages; overflow still sends the
+# best ones rather than going silent. Override with ALERT_DAILY_CAP.
+MAX_ALERTS_PER_DAY = int(os.environ.get("ALERT_DAILY_CAP", "200"))
 
 
 def already_flagged():
@@ -187,17 +190,14 @@ def main():
     # Rank by dollars saved, not discount percent. Under a 20/day cap a 30%
     # discount on a $12 card ($4) must not displace $180 off a $600 card.
     candidates.sort(key=lambda c: (-c["saving"], -c["discount_pct"]))
-    room = MAX_ALERTS_PER_DAY - sent_today
+    room = max(0, MAX_ALERTS_PER_DAY - sent_today)
+    to_send = candidates[:room]
     over_limit = len(candidates) > room
-
     if over_limit:
-        print(f"::warning::{len(candidates)} candidates exceeds the "
-              f"{MAX_ALERTS_PER_DAY}/day alert cap ({sent_today} already sent "
-              f"today). Reference logic is probably wrong — recording them but "
-              f"sending nothing.")
-        to_send = []
-    else:
-        to_send = candidates[:max(0, room)]
+        print(f"::warning::{len(candidates)} candidates but only {room} left "
+              f"under the {MAX_ALERTS_PER_DAY}/day runaway guard "
+              f"({sent_today} already sent). Sending the {len(to_send)} "
+              f"largest by saving; the rest are still recorded in flags.jsonl.")
 
     configured = bool(os.environ.get("TELEGRAM_TOKEN") and
                       os.environ.get("TELEGRAM_CHAT_ID")) or \
@@ -223,7 +223,8 @@ def main():
              f"candidates flagged: {len(candidates)}",
              f"notifications sent: {sent}",
              f"alerts already sent today: {sent_today}",
-             f"cap exceeded (suppressed): {over_limit}"]
+             f"held back by the daily guard: "
+             f"{max(0, len(candidates) - len(to_send))}"]
     print("\n".join("[scan] " + l for l in lines))
     for flag in candidates[:10]:
         print(f"[scan]   save ${flag['saving']:>7.2f}  -{flag['discount_pct']:.0f}%  "
