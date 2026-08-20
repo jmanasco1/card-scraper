@@ -11,6 +11,9 @@ on:
     # Aspect enrichment. Hourly, offset again; budget-capped and it skips
     # itself when the daily quota runs low, so collection always wins.
     - cron: "37 * * * *"
+    # Slice backfill. 3,245 slices cannot be filled in a day, so this grinds
+    # through the grid every four hours, rotating and resuming where it left off.
+    - cron: "23 */4 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -162,14 +165,14 @@ jobs:
 
       - name: Backfill slice inventory
         id: backfill
-        if: ${{ inputs.mode == 'backfill' }}
+        if: ${{ inputs.mode == 'backfill' || github.event.schedule == '23 */4 * * *' }}
         run: |
           python -m ebay_scanner.backfill
           { echo '## Backfill'; echo; echo '```'; \
             cat backfill_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit backfill data
-        if: ${{ inputs.mode == 'backfill' && steps.backfill.outputs.new_count != '0' }}
+        if: ${{ (inputs.mode == 'backfill' || github.event.schedule == '23 */4 * * *') && steps.backfill.outputs.new_count != '0' }}
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"

@@ -424,18 +424,39 @@ The fix is to pin `Set`, `Professional Grader` and `Grade` in the aspect filter.
 All three are then known from the query itself, no enrichment call needed, and
 the corpus concentrates on cards that actually repeat. **Slices are chosen by volume, not by taste.** 3,360 distinct Set values exist
 in the category; `mode: probe-sets` reads eBay's Set distribution under each
-grade tier and writes `data/set_volumes.json` ranked by live listing count. The
-grid is then the top `slice_top_sets` sets crossed with `slice_grades` — 59
-sets x 5 tiers = 295 slices covering PSA 10/9, BGS 9.5, SGC 10 and CGC 10.
+grade tier and writes `data/set_volumes.json` ranked by live listing count. Any set carrying at least `slice_min_listings` (500) earns a slice, crossed with
+`slice_grades` — **649 sets x 5 tiers = 3,245 slices** covering PSA 10/9, BGS
+9.5, SGC 10 and CGC 10.
+
+A floor rather than a top-N cut, because capping by rank excluded whole brands
+that are perfectly tradeable, just lower-volume than modern Prizm: Fleer, Upper
+Deck, Stadium Club, Score, Leaf, Allen & Ginter, National Treasures and
+Contenders were all absent at a 60-set cap.
 
 Two traps this avoids. Hand-picking missed the highest-volume set entirely
 (`2024 Bowman`, 41,642 listings). And basketball sets are named across two
 years, so `2023-24 Panini Prizm` is a *different* Set value from `2023 Panini
 Prizm` — picking by hand silently dropped one of them.
 
-A run cannot fill 295 slices inside the daily call budget, so backfill rotates:
-`backfill_slices_per_run` slices per run, tracked in `data/backfill_state.json`,
-restarting once the grid is fully covered.
+One pass over the grid is roughly 9,000 calls against a 5,000/day ceiling, so
+backfill runs on its own cron every four hours, rotating
+`backfill_slices_per_run` slices at a time and resuming from
+`data/backfill_state.json`. A full pass takes several days; after that ordinary
+collection keeps the slices current.
+
+### Call budget
+
+| Job | Cadence | Calls/day |
+|---|---|---|
+| collect | every 15 min | ~770 |
+| re-check | hourly | ~1,080 |
+| enrich | hourly | ~620 |
+| backfill | every 4h | ~2,400 |
+| **total** | | **~4,870 / 5,000** |
+
+Enrichment was cut back deliberately. Slices supply set, grader and grade from
+the query itself, so `getItem` is now only buying certification numbers and
+player names — worth less than the comps backfill creates with the same calls.
 
 `python -m ebay_scanner.backfill` walks `itemStartDate` windows backwards to
 pull the slice's **standing inventory**, not just newly-listed items — 200

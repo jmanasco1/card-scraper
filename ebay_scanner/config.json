@@ -22,13 +22,13 @@
   "category_cache_days": 7,
   "recheck_window_hours": 1,
   "recheck_lookback_days": 7,
-  "recheck_max_windows": 8,
+  "recheck_max_windows": 5,
   "recheck_max_pages": 20,
   "recheck_min_age_hours": 1,
-  "enrich_max_calls_per_run": 100,
+  "enrich_max_calls_per_run": 25,
   "enrich_min_quota": 800,
   "enrich_strategy": "newest",
-  "backfill_max_calls": 900,
+  "backfill_max_calls": 400,
   "backfill_lookback_days": 365,
   "backfill_window_hours": 168,
   "backfill_max_pages": 50,
@@ -63,7 +63,7 @@
       "grade": "10"
     }
   ],
-  "backfill_slices_per_run": 25,
-  "slice_min_listings": 1500,
+  "backfill_slices_per_run": 40,
+  "slice_min_listings": 500,
   "slice_top_sets": 0
 }
