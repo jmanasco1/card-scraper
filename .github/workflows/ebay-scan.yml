@@ -17,6 +17,7 @@ on:
           - probe
           - probe-filters
           - probe-neither
+          - probe-rate
       max_pages:
         description: "Override pages per run (blank = config.json value)"
         required: false
@@ -86,6 +87,10 @@ jobs:
       - name: Probe the neither bucket
         if: ${{ inputs.mode == 'probe-neither' }}
         run: python -m ebay_scanner.probe_neither
+
+      - name: Probe listing velocity by price band
+        if: ${{ inputs.mode == 'probe-rate' }}
+        run: python -m ebay_scanner.probe_rate
 
       - name: Collect listings
         id: collect
