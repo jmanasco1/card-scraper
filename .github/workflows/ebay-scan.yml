@@ -18,6 +18,7 @@ on:
           - probe-filters
           - probe-neither
           - probe-rate
+          - probe-recheck
       max_pages:
         description: "Override pages per run (blank = config.json value)"
         required: false
@@ -91,6 +92,10 @@ jobs:
       - name: Probe listing velocity by price band
         if: ${{ inputs.mode == 'probe-rate' }}
         run: python -m ebay_scanner.probe_rate
+
+      - name: Probe re-check routes
+        if: ${{ inputs.mode == 'probe-recheck' }}
+        run: python -m ebay_scanner.probe_recheck
 
       - name: Collect listings
         id: collect
