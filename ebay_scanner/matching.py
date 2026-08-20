@@ -43,7 +43,9 @@ TITLE_GRADE_RE = re.compile(
     r"(10|9\.5|9|8\.5|8|7\.5|7|6\.5|6|5\.5|5|4\.5|4|3\.5|3|2\.5|2|1\.5|1)\b",
     re.I)
 YEAR_RE = re.compile(r"\b(19[3-9]\d|20[0-4]\d)(?:\s*[-/]\s*\d{2,4})?\b")
-CARD_NO_RE = re.compile(r"#\s*([A-Za-z]{0,4}-?\d+[A-Za-z]?)\b")
+# Card numbers are often alphanumeric (#BCP50) and sometimes purely
+# alphabetic with a hyphen (#SS-TL, #PT-AM), which a digits-only pattern drops.
+CARD_NO_RE = re.compile(r"#\s*([A-Za-z]{0,5}-?\d+[A-Za-z]?|[A-Za-z]{2,4}-[A-Za-z]{2,4})\b")
 
 # A base Prizm and a Gold /10 of the same card number are different cards for
 # pricing. Longest match wins so "green ice" beats "ice" and "red white blue"

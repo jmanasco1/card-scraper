@@ -51,9 +51,9 @@
       "aspect_filter": "Professional Grader:{Professional Sports Authenticator (PSA)},Grade:{10},Set:{2022 Bowman Chrome}"
     }
   ],
-  "backfill_max_calls": 1200,
-  "backfill_lookback_days": 120,
-  "backfill_window_hours": 72,
+  "backfill_max_calls": 1800,
+  "backfill_lookback_days": 365,
+  "backfill_window_hours": 168,
   "backfill_max_pages": 50,
   "backfill_min_quota": 500
 }
