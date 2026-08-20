@@ -143,6 +143,13 @@ Both must come from a **Production** keyset, not Sandbox — the sandbox
 environment has essentially no real graded-card inventory, so a sandbox-keyed
 run goes green while collecting nothing useful.
 
+**eBay disables production keysets** until the application handles marketplace
+account-deletion notifications. A compliant endpoint lives in
+[`ebay-deletion-endpoint/`](ebay-deletion-endpoint/) — one Vercel serverless
+function, no server or domain required. Deploy it and register its URL in the
+eBay developer console, or the keyset stays disabled and every call returns
+`invalid_client`.
+
 Then: **Actions → eBay Graded Card Scan → Run workflow**. Choose `probe` to dump
 live API response shapes, or `collect` for a real run.
 
@@ -173,6 +180,33 @@ The Browse API allows **5,000 calls/day** at the application level. A typical
 run costs about 5 calls plus one per 20 new listings, so the 15-minute schedule
 lands well inside the budget. Quota is read and logged at the start of every
 run, and the run aborts below 500 remaining.
+
+## Known limits, verified against the live API
+
+**Aspect columns are empty.** `localizedAspects` — grader, grade, certification
+number, set, player, card number — exists only on Browse's *item detail*
+endpoints, and those return `403 Insufficient permissions` without eBay's **Buy
+API access grant**, which is a separate application from the account-deletion
+compliance step. Search itself works fine. The collector detects the 403, logs a
+warning, and stores every field search does return rather than failing the run;
+the step summary says explicitly that empty aspect columns mean missing access,
+not missing listing data. If the grant is obtained later, enrichment starts
+working with no code change.
+
+Two things soften this: `condition` comes through as `Graded` on search, so
+graded-ness is captured regardless, and titles are dense with grader and grade
+("... PSA 10", "... BGS 9.5") if you want to parse them.
+
+**`getRateLimits` does not resolve.** The Developer Analytics endpoint returns
+404 on every documented host. The client tries each candidate and, finding none,
+logs a warning and proceeds without the quota guard. Actual usage is roughly 5
+calls per run against a 5,000/day ceiling, so the headroom is large — but the
+guard is currently advisory only.
+
+**`buyingOptions:{FIXED_PRICE}` is inclusive.** eBay returns listings where
+fixed price is *one of* the options, so ~4% of rows also carry `AUCTION`
+(Buy It Now on an auction). Filter on `buyingOptions` in SQL if you want pure
+fixed-price.
 
 ## Stored fields
 
@@ -215,7 +249,7 @@ at any time.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `category_ids` | `["261328"]` | Verified against the Taxonomy API at runtime |
+| `category_ids` | `["261328"]` | Verified live as `Trading Card Singles` (leaf) |
 | `price_min` / `price_max` | `75` / `400` | USD band |
 | `buying_options` | `["FIXED_PRICE"]` | Excludes auctions |
 | `sort` | `newlyListed` | |
