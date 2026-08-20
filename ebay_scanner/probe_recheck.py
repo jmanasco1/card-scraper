@@ -53,6 +53,30 @@ def main():
         if resp.status_code != 200:
             print(f"[recheck]     {resp.text[:160]}")
 
+    print("\n########## A2. DOES getItem CARRY ASPECTS? ##########")
+    for r in rows[:3]:
+        resp = client.get(f"{config.API_HOST}/buy/browse/v1/item/{r['itemId']}",
+                          allow_status=(400, 403, 404, 410))
+        if resp.status_code != 200:
+            print(f"[recheck] {r['itemId']} -> HTTP {resp.status_code}")
+            continue
+        item = resp.json()
+        aspects = item.get("localizedAspects") or []
+        names = [a.get("name") for a in aspects]
+        print(f"[recheck] {r['itemId']}  keys={len(item)}  aspects={len(aspects)}")
+        print(f"[recheck]   names: {names[:14]}")
+        for want in ["Professional Grader", "Grade", "Certification Number",
+                     "Set", "Player/Athlete", "Card Number", "Season"]:
+            hit = next((a.get("value") for a in aspects if a.get("name") == want), None)
+            print(f"[recheck]     {want:22} = {hit!r}")
+        break
+
+    print("\n########## A3. WHAT DOES A DEAD LISTING RETURN? ##########")
+    bogus = "v1|100000000000|0"
+    resp = client.get(f"{config.API_HOST}/buy/browse/v1/item/{bogus}",
+                      allow_status=(400, 403, 404, 410, 500))
+    print(f"[recheck] bogus itemId -> HTTP {resp.status_code}  {resp.text[:200]}")
+
     print("\n########## B. itemStartDate WINDOW SEARCH ##########")
     # If live listings can be enumerated by creation window, absence from a
     # re-sweep of that window means the listing ended.
