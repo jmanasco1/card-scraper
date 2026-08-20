@@ -16,6 +16,7 @@ on:
           - collect
           - probe
           - probe-filters
+          - probe-neither
       max_pages:
         description: "Override pages per run (blank = config.json value)"
         required: false
@@ -81,6 +82,10 @@ jobs:
       - name: Probe filters and category tree
         if: ${{ inputs.mode == 'probe-filters' }}
         run: python -m ebay_scanner.probe_filters
+
+      - name: Probe the neither bucket
+        if: ${{ inputs.mode == 'probe-neither' }}
+        run: python -m ebay_scanner.probe_neither
 
       - name: Collect listings
         id: collect
