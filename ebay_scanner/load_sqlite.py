@@ -79,15 +79,37 @@ def main():
     names = ", ".join(f'"{name}"' for name, _ in COLUMNS)
     sql = f"INSERT OR REPLACE INTO listings ({names}) VALUES ({placeholders})"
 
+    # Aspects live in their own append-only file; overlay the newest attempt
+    # per itemId so enriched rows carry real grader/grade/set/player.
+    aspects = {}
+    apath = config.DATA_DIR / "aspects.jsonl"
+    if apath.exists():
+        with open(apath) as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                rec = json.loads(line)
+                if rec.get("status") == "ok" and rec.get("itemId"):
+                    aspects[rec["itemId"]] = rec
+        print(f"Overlaying {len(aspects)} enriched listing(s) from aspects.jsonl")
+
     loaded = 0
-    files = sorted(config.DATA_DIR.glob("*.jsonl"))
+    files = [f for f in sorted(config.DATA_DIR.glob("*.jsonl"))
+             if f.name not in ("aspects.jsonl", "lifecycle.jsonl")]
     for path in files:
         with open(path) as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
                     continue
-                conn.execute(sql, row_from(json.loads(line)))
+                record = json.loads(line)
+                extra = aspects.get(record.get("itemId"))
+                if extra:
+                    for key in list(ASPECT_COLUMNS) + ["aspects", "aspectCount"]:
+                        if extra.get(key) is not None:
+                            record[key] = extra[key]
+                    record["detailFetched"] = True
+                conn.execute(sql, row_from(record))
                 loaded += 1
         conn.commit()
 

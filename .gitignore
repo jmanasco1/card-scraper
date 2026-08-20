@@ -3,3 +3,4 @@ __pycache__/
 .cache/
 cards.db
 recheck_summary.txt
+enrich_summary.txt

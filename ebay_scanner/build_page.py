@@ -35,9 +35,27 @@ def parse_grade(title):
     return match.group(1).upper(), match.group(2)
 
 
+def load_aspects():
+    """Newest successful enrichment per itemId, if any."""
+    out = {}
+    path = config.DATA_DIR / "aspects.jsonl"
+    if not path.exists():
+        return out
+    with open(path) as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            if rec.get("status") == "ok" and rec.get("itemId"):
+                out[rec["itemId"]] = rec
+    return out
+
+
 def load_records():
     records = []
     for path in sorted(glob.glob(str(config.DATA_DIR / "*.jsonl"))):
+        if path.endswith(("aspects.jsonl", "lifecycle.jsonl")):
+            continue
         with open(path) as fh:
             for line in fh:
                 line = line.strip()
@@ -73,6 +91,14 @@ def main():
     args = parser.parse_args()
 
     records = load_records()
+    enriched = load_aspects()
+    for r in records:
+        extra = enriched.get(r.get("itemId"))
+        if extra:
+            for key in ("grader", "grade", "cert_number", "season",
+                        "set_name", "player", "card_number"):
+                if extra.get(key):
+                    r[key] = extra[key]
     total = len(records)
     records.sort(key=lambda r: (r.get("itemCreationDate") or ""), reverse=True)
     shown = [trim(r) for r in records[:args.limit]]

@@ -8,6 +8,9 @@ on:
     # Listing re-check (disappearance / sold-proxy). Hourly, offset off the
     # hour so it does not queue behind a collection run on the same minute.
     - cron: "7 * * * *"
+    # Aspect enrichment. Hourly, offset again; budget-capped and it skips
+    # itself when the daily quota runs low, so collection always wins.
+    - cron: "37 * * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -23,6 +26,7 @@ on:
           - probe-rate
           - probe-recheck
           - recheck
+          - enrich
       max_pages:
         description: "Override pages per run (blank = config.json value)"
         required: false
@@ -108,6 +112,33 @@ jobs:
           python -m ebay_scanner.recheck
           { echo '## Listing re-check'; echo; echo '```'; \
             cat recheck_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enrich listing aspects
+        id: enrich
+        if: ${{ inputs.mode == 'enrich' || github.event.schedule == '37 * * * *' }}
+        run: |
+          python -m ebay_scanner.enrich
+          { echo '## Aspect enrichment'; echo; echo '```'; \
+            cat enrich_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit aspect data
+        if: ${{ inputs.mode == 'enrich' || github.event.schedule == '37 * * * *' }}
+        run: |
+          git config user.name "card-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/aspects.jsonl data/lifecycle.jsonl
+          if git diff --staged --quiet; then
+            echo "Nothing staged; skipping commit."
+            exit 0
+          fi
+          git commit -m "Enrich: ${{ steps.enrich.outputs.written }} listings $(date -u +%FT%TZ)"
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:${GITHUB_REF_NAME}; then exit 0; fi
+            git pull --rebase origin ${GITHUB_REF_NAME} || true
+            sleep $((2 ** attempt))
+          done
+          echo "::error::Could not push aspect data after 4 attempts."
+          exit 1
 
       - name: Commit lifecycle data
         if: ${{ inputs.mode == 'recheck' || github.event.schedule == '7 * * * *' }}

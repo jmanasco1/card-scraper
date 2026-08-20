@@ -24,5 +24,8 @@
   "recheck_lookback_days": 7,
   "recheck_max_windows": 8,
   "recheck_max_pages": 20,
-  "recheck_min_age_hours": 1
+  "recheck_min_age_hours": 1,
+  "enrich_max_calls_per_run": 100,
+  "enrich_min_quota": 800,
+  "enrich_strategy": "newest"
 }
