@@ -148,6 +148,15 @@ def main():
         ref = references.get(key) if key else None
         if not ref or ref["comp_count"] < reference.MIN_COMPS:
             continue
+        # Cheap pre-filter on the shared reference, then re-price against the
+        # bucket with this listing removed so it cannot vote on its own value.
+        if price > DISCOUNT * ref["reference"]:
+            continue
+        peer_refs, _, _ = reference.build(rows, aspects, gone, now,
+                                          exclude_item=r["itemId"])
+        ref = peer_refs.get(key)
+        if not ref or ref["comp_count"] < reference.MIN_COMPS:
+            continue          # only itself held the bucket above the minimum
         if price > DISCOUNT * ref["reference"]:
             continue
         candidates.append({

@@ -469,6 +469,13 @@ suppressed entirely rather than guessed. `data/references.jsonl` holds the
 current values with the full percentile spread; `data/reference_snapshots.jsonl`
 appends one row per bucket per day so drift stays visible.
 
+**A listing never prices itself.** Before a candidate is judged, its bucket is
+recomputed with that listing removed, so it cannot vote on the value it is
+being compared against. Leaving it in drags the reference down and understates
+the discount. The 5-comp minimum then means five *other* listings, so a bucket
+holding exactly the candidate plus four peers is suppressed rather than flagged
+off a comp set of four.
+
 ### BIN scanner
 
 Flags a listing only when every condition holds: price within $75–$400, bucket

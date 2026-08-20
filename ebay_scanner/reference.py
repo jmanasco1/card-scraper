@@ -59,8 +59,13 @@ def load_corpus():
     return rows, aspects, gone
 
 
-def build(rows, aspects, gone, now=None):
-    """Return {bucket_key: reference_record} for buckets that qualify."""
+def build(rows, aspects, gone, now=None, exclude_item=None):
+    """Return {bucket_key: reference_record} for buckets that qualify.
+
+    exclude_item drops one itemId from the comp set. A listing must not help
+    set the price it is being judged against — otherwise a cheap card pulls
+    its own reference down and understates its discount.
+    """
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=MAX_AGE_DAYS)
 
@@ -68,6 +73,8 @@ def build(rows, aspects, gone, now=None):
     for r in rows:
         if r.get("itemId") in gone:
             continue          # sold or pulled; not a live ask
+        if exclude_item and r.get("itemId") == exclude_item:
+            continue          # never let a listing price itself
         key, method, _ = matching.bucket_key(r, aspects.get(r.get("itemId")))
         if key:
             buckets[key].append((r, method))
