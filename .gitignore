@@ -5,3 +5,6 @@ cards.db
 recheck_summary.txt
 enrich_summary.txt
 backfill_summary.txt
+reference_summary.txt
+scan_summary.txt
+episodes_summary.txt

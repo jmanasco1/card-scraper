@@ -410,3 +410,82 @@ Only the **bulk** `getItems` endpoint is 403 for this application. Single-item
 Number, Season and Certification Number. Enrichment is therefore possible at one
 call per listing, which does not fit the budget for ~29k new listings a day but
 does support a sampled subset. Not yet wired up.
+
+## Pipeline: matching, references, scanning
+
+### Slices, and why they exist
+
+Matching on the open catalogue does not work. Sports card singles are extreme
+long tail — 27k listings spread across ~14k distinct cards, median bucket size
+1 — so copies of the same card almost never co-occur and there is nothing to
+compare against.
+
+The fix is to pin `Set`, `Professional Grader` and `Grade` in the aspect filter.
+All three are then known from the query itself, no enrichment call needed, and
+the corpus concentrates on cards that actually repeat. Slices live in
+`config.json`; the current three are 2023 and 2022 Panini Prizm PSA 10 and 2022
+Bowman Chrome PSA 10.
+
+`python -m ebay_scanner.backfill` walks `itemStartDate` windows backwards to
+pull the slice's **standing inventory**, not just newly-listed items — 200
+listings per call, which is what makes depth affordable.
+
+### Bucket key
+
+```
+year | set | card_number | parallel | grader | grade
+```
+
+Normalization, all covered by tests:
+
+- **Grader** — aliases map to a code, Beckett to BGS. Qualifiers (OC/ST/MK)
+  are recorded but excluded from the key; an OC copy is still the same card.
+- **Grade** — numeric only, so "PSA 10 GEM MT" and "PSA 10" are one bucket
+  while BGS 9.5 and BGS 9 stay separate.
+- **Set** — year split into its own field, sport suffix dropped, so "1987
+  Fleer" and "1987 Fleer Basketball" collapse.
+- **Card number** — "#" and leading zeros stripped; alphanumeric forms like
+  `#BCP50` and `#SS-TL` are kept.
+- **Parallel** — matched on a flattened form so "Red White & Blue" and "Red
+  White and Blue" are one value. Absence means `base`.
+
+**Parallel is in the key deliberately.** Without it a base Prizm and a Gold /10
+of the same card number share a bucket, producing $20–$400 spreads and
+worthless references. Adding it cut wide buckets from 174/238 to under a
+quarter.
+
+**Player is stored but not required in the key.** Within a fixed set the card
+number already determines the player, and requiring a title-parsed player
+split the same card across several buckets.
+
+Every record carries `match_method` — `slice`, `aspects` or `title` — so the
+share of the dataset resting on the parser is measurable rather than assumed.
+
+### Reference values
+
+Per bucket: drop asks older than 45 days, require 5+ remaining, and take the
+**median of the five lowest** as the reference. Buckets under the minimum are
+suppressed entirely rather than guessed. `data/references.jsonl` holds the
+current values with the full percentile spread; `data/reference_snapshots.jsonl`
+appends one row per bucket per day so drift stays visible.
+
+### BIN scanner
+
+Flags a listing only when every condition holds: price within $75–$400, bucket
+has a valid reference, price at or under 70% of it, and the listing is under 24
+hours old. The $20 collection floor is for building references, never for
+alerting. Each flag stores the reference, comp count, discount and the bucket's
+full distribution at flag time, so false positives can be reviewed after the
+fact.
+
+Alerts are capped at 20/day. Exceeding the cap is treated as a signal that the
+reference logic is wrong, so the run logs a warning and sends nothing rather
+than spamming.
+
+### Episodes (capture only)
+
+Chains are keyed on certification number where present. Where absent the
+fallback requires seller **and** bucket **and** image hash to agree, with
+consecutive prices within 15%. Seller plus bucket alone is not enough — dealers
+hold several copies of the same card in the same grade, and merging those would
+manufacture relist chains that never happened. Nothing is surfaced yet.

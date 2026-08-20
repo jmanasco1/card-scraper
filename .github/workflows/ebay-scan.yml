@@ -27,6 +27,7 @@ on:
           - probe-recheck
           - probe-slice
           - backfill
+          - scan
           - recheck
           - enrich
       max_pages:
@@ -112,6 +113,36 @@ jobs:
       - name: Probe re-check routes
         if: ${{ inputs.mode == 'probe-recheck' }}
         run: python -m ebay_scanner.probe_recheck
+
+      - name: Reference values, BIN scan, episodes
+        id: scan
+        if: ${{ inputs.mode == 'scan' || github.event.schedule == '*/15 * * * *' }}
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          python -m ebay_scanner.reference
+          python -m ebay_scanner.scanner
+          python -m ebay_scanner.episodes
+          { echo '## Reference values'; echo; echo '```'; cat reference_summary.txt; echo '```'; \
+            echo '## BIN scan'; echo; echo '```'; cat scan_summary.txt; echo '```'; \
+            echo '## Episodes'; echo; echo '```'; cat episodes_summary.txt; echo '```'; \
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit scanner outputs
+        if: ${{ inputs.mode == 'scan' || github.event.schedule == '*/15 * * * *' }}
+        run: |
+          git config user.name "card-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/references.jsonl data/reference_snapshots.jsonl \
+                  data/flags.jsonl data/episodes.jsonl 2>/dev/null || true
+          if git diff --staged --quiet; then echo "nothing staged"; exit 0; fi
+          git commit -m "Scan: refs + flags $(date -u +%FT%TZ)"
+          for attempt in 1 2 3 4; do
+            if git push origin HEAD:${GITHUB_REF_NAME}; then exit 0; fi
+            git pull --rebase origin ${GITHUB_REF_NAME} || true
+            sleep $((2 ** attempt))
+          done
+          echo "::error::Could not push scanner outputs."; exit 1
 
       - name: Backfill slice inventory
         id: backfill
