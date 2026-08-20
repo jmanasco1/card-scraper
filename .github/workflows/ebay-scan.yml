@@ -25,6 +25,7 @@ on:
           - probe-neither
           - probe-rate
           - probe-recheck
+          - probe-slice
           - recheck
           - enrich
       max_pages:
@@ -110,6 +111,10 @@ jobs:
       - name: Probe re-check routes
         if: ${{ inputs.mode == 'probe-recheck' }}
         run: python -m ebay_scanner.probe_recheck
+
+      - name: Probe slice density
+        if: ${{ inputs.mode == 'probe-slice' }}
+        run: python -m ebay_scanner.probe_slice
 
       - name: Re-check stored listings
         id: recheck
