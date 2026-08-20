@@ -17,6 +17,7 @@ from . import auth, config, query, store
 from .client import EbayClient
 
 LIFECYCLE = config.DATA_DIR / "lifecycle.jsonl"
+STATE = config.DATA_DIR / "recheck_state.json"
 
 
 def _parse(ts):
@@ -42,6 +43,22 @@ def load_gone():
                 if rec.get("itemId"):
                     gone[rec["itemId"]] = rec
     return gone
+
+
+def load_state():
+    """When each window was last swept, so coverage rotates instead of starving."""
+    try:
+        with open(STATE) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(state):
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(STATE, "w") as fh:
+        json.dump(state, fh, indent=2, sort_keys=True)
+        fh.write("\n")
 
 
 def window_key(created, hours):
@@ -123,8 +140,12 @@ def main():
           f"{sum(len(v) for v in buckets.values())} live candidates "
           f"across {len(buckets)} window(s) of {hours}h")
 
-    # Oldest windows first: those listings have had the most time to sell.
-    order = sorted(buckets)[:max_windows]
+    # Least-recently-swept first. Sorting by window start alone would re-sweep
+    # the same oldest windows every run and never reach the other ~160.
+    state = load_state()
+    order = sorted(buckets, key=lambda w: (state.get(w.isoformat(), ""), w))[:max_windows]
+    print(f"[recheck] {len(buckets)} window(s) eligible, sweeping {len(order)} "
+          f"least-recently-checked")
     now = datetime.now(timezone.utc).isoformat()
     newly_gone = []
 
@@ -136,6 +157,7 @@ def main():
         print(f"[recheck] {start:%m-%d %H:%M} +{hours}h  candidates={len(candidates):4} "
               f"live_seen={len(live):4} total={total}  gone={len(missing)}")
 
+        state[start.isoformat()] = now
         if total and len(live) < total:
             print(f"[recheck]   ::warning:: only paged {len(live)} of {total} live "
                   f"listings in this window; raise recheck_max_pages")
@@ -156,6 +178,8 @@ def main():
                 "sellerUsername": r.get("sellerUsername"),
                 "conditionId": r.get("conditionId"),
             })
+
+    save_state(state)
 
     if newly_gone:
         config.DATA_DIR.mkdir(parents=True, exist_ok=True)

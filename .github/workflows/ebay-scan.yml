@@ -2,9 +2,12 @@ name: eBay Graded Card Scan
 
 on:
   schedule:
-    # Every 15 minutes. GitHub delays scheduled runs under load — see README;
+    # Collection sweep. GitHub delays scheduled runs under load — see README;
     # real cadence is looser than this and runs can be skipped entirely.
     - cron: "*/15 * * * *"
+    # Listing re-check (disappearance / sold-proxy). Hourly, offset off the
+    # hour so it does not queue behind a collection run on the same minute.
+    - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -100,18 +103,18 @@ jobs:
 
       - name: Re-check stored listings
         id: recheck
-        if: ${{ inputs.mode == 'recheck' }}
+        if: ${{ inputs.mode == 'recheck' || github.event.schedule == '7 * * * *' }}
         run: |
           python -m ebay_scanner.recheck
           { echo '## Listing re-check'; echo; echo '```'; \
             cat recheck_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit lifecycle data
-        if: ${{ inputs.mode == 'recheck' && steps.recheck.outputs.newly_gone != '0' }}
+        if: ${{ inputs.mode == 'recheck' || github.event.schedule == '7 * * * *' }}
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/lifecycle.jsonl
+          git add data/lifecycle.jsonl data/recheck_state.json
           if git diff --staged --quiet; then
             echo "Nothing staged; skipping commit."
             exit 0
@@ -127,15 +130,15 @@ jobs:
 
       - name: Collect listings
         id: collect
-        if: ${{ inputs.mode == 'collect' || github.event_name == 'schedule' }}
+        if: ${{ inputs.mode == 'collect' || github.event.schedule == '*/15 * * * *' }}
         run: python -m ebay_scanner.collect
 
       - name: Build listings page
-        if: ${{ inputs.mode == 'collect' || github.event_name == 'schedule' }}
+        if: ${{ inputs.mode == 'collect' || github.event.schedule == '*/15 * * * *' }}
         run: python -m ebay_scanner.build_page
 
       - name: Commit new data
-        if: ${{ (inputs.mode == 'collect' || github.event_name == 'schedule') && steps.collect.outputs.new_count != '0' }}
+        if: ${{ (inputs.mode == 'collect' || github.event.schedule == '*/15 * * * *') && steps.collect.outputs.new_count != '0' }}
         run: |
           git config user.name "card-scanner-bot"
           git config user.email "actions@users.noreply.github.com"

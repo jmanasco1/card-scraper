@@ -366,3 +366,47 @@ Titles carry a recognisable grader and grade about **82%** of the time, which is
 enough to filter on. The parse is display-only and is deliberately never written
 back into the JSONL, so the stored data stays purely API-derived. If the Buy API
 grant comes through, real aspects take precedence automatically.
+
+## Listing re-check (the sold-proxy)
+
+The collector only ever writes *new* listings, so nothing revisited them and
+disappearance — the only available proxy for a sale — was unmeasurable. The
+re-check pass fills that in, running hourly on its own cron.
+
+```
+schedule:
+  - cron: "*/15 * * * *"   # collection sweep
+  - cron: "7 * * * *"      # re-check, offset off the hour
+```
+
+Each run sweeps whole hours of listing-creation time via the `itemStartDate`
+window search — 200 live listings per call, against one per listing for
+`getItem`. Anything stored but absent from its window is recorded as gone in
+`data/lifecycle.jsonl` with price, seller, condition and hours-listed.
+
+Three correctness rules, each learned from a failure in the first live runs:
+
+- **Windows must be closed and aged.** A window whose end time is in the future
+  makes eBay silently drop the date filter; one sweep came back with 3,053,675
+  matches — the whole band — which would have marked the entire dataset sold.
+- **Incomplete sweeps record nothing.** If a window cannot be paged in full the
+  run warns and skips it, rather than reporting unseen listings as sold.
+- **Windows rotate least-recently-swept first.** Ordering by window start would
+  re-sweep the same oldest eight every run and never reach the other ~160.
+  `data/recheck_state.json` tracks the last sweep per window; a 7-day backlog is
+  fully covered within 24 hourly runs.
+
+### Cost
+
+About 9 pages per hour-window, 8 windows per run, ~72 calls hourly — roughly
+1,700/day, on top of ~770/day for collection. Comfortably inside the 5,000/day
+Browse limit.
+
+### On `getItem`
+
+Only the **bulk** `getItems` endpoint is 403 for this application. Single-item
+`getItem` and `getItemByLegacyId` both return 200 and carry the full
+`localizedAspects` block — Professional Grader, Grade, Set, Player/Athlete, Card
+Number, Season and Certification Number. Enrichment is therefore possible at one
+call per listing, which does not fit the budget for ~29k new listings a day but
+does support a sampled subset. Not yet wired up.
