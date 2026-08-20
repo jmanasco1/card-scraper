@@ -48,9 +48,17 @@ def main():
     total(client, cfg, label="baseline: category + $20-400 + graded")
     psa10 = "Professional Grader:{Professional Sports Authenticator (PSA)},Grade:{10}"
     total(client, cfg, aspect_extra=psa10, label="PSA 10")
-    for term in ["Prizm", "Panini Prizm", "Topps Chrome", "Bowman Chrome",
-                 "Donruss Optic", "Select"]:
-        total(client, cfg, aspect_extra=psa10, q=term, label=f"PSA 10 + q={term!r}")
+    print("\n########## SET-PINNED SLICES (set known without enrichment) ##########")
+    for st in ["2022 Panini Prizm", "2023 Panini Prizm", "2021 Panini Prizm",
+               "2020 Panini Prizm", "2022 Topps Chrome", "2021 Topps Chrome",
+               "2022 Bowman Chrome", "2019 Panini Prizm"]:
+        total(client, cfg, aspect_extra=psa10 + ",Set:{%s}" % st,
+              label=f"PSA 10 + Set={st!r}")
+    print("\n########## same sets, PSA 9 ##########")
+    psa9 = "Professional Grader:{Professional Sports Authenticator (PSA)},Grade:{9}"
+    for st in ["2022 Panini Prizm", "2023 Panini Prizm"]:
+        total(client, cfg, aspect_extra=psa9 + ",Set:{%s}" % st,
+              label=f"PSA 9 + Set={st!r}")
     print(f"\n[slice] calls used: {client.call_count}")
 
 
