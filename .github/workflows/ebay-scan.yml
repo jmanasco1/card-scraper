@@ -65,13 +65,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r ebay_scanner/requirements.txt
 
-      # eBay application tokens last ~2h; this carries one across runs so most
-      # runs skip the token call entirely.
+      # eBay application tokens last ~2h. Keying the cache per run_id meant a
+      # fresh cache entry every run and frequent misses, so nearly every run
+      # re-authenticated and eBay began throttling the token endpoint. Bucket
+      # by hour instead: the first run in an hour saves, the rest reuse it.
+      - name: Token cache bucket
+        id: tokbucket
+        run: echo "key=$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
+
       - name: Restore token cache
         uses: actions/cache@v4
         with:
           path: .cache
-          key: ebay-token-${{ github.run_id }}
+          key: ebay-token-${{ steps.tokbucket.outputs.key }}
           restore-keys: |
             ebay-token-
 

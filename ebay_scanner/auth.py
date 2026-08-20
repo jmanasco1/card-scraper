@@ -13,6 +13,12 @@ SCOPE = "https://api.ebay.com/oauth/api_scope"
 # Refresh a little early so a token can't expire mid-run.
 EXPIRY_MARGIN_SECONDS = 300
 
+# eBay's token endpoint throttles by answering 401 invalid_client rather than
+# 429. Observed live: a mint failed at 19:56 and the identical request
+# succeeded at 19:59. Retry before treating it as a credential problem.
+TOKEN_ATTEMPTS = 4
+TOKEN_BACKOFF_SECONDS = [5, 20, 60]
+
 
 def _read_cache():
     try:
@@ -43,18 +49,35 @@ def get_token(client_id, client_secret, force=False):
             return cached, False
 
     basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
-    resp = requests.post(
-        TOKEN_URL,
-        headers={
-            "Authorization": f"Basic {basic}",
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-        data={"grant_type": "client_credentials", "scope": SCOPE},
-        timeout=30,
-    )
+    resp = None
+    for attempt in range(TOKEN_ATTEMPTS):
+        resp = requests.post(
+            TOKEN_URL,
+            headers={
+                "Authorization": f"Basic {basic}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={"grant_type": "client_credentials", "scope": SCOPE},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            if attempt:
+                print(f"[auth] token minted on attempt {attempt + 1} "
+                      f"(earlier attempts were throttled)")
+            break
+        transient = resp.status_code in (429, 500, 502, 503, 504) or (
+            resp.status_code == 401 and "invalid_client" in resp.text)
+        if not transient or attempt == TOKEN_ATTEMPTS - 1:
+            break
+        delay = TOKEN_BACKOFF_SECONDS[min(attempt, len(TOKEN_BACKOFF_SECONDS) - 1)]
+        print(f"[auth] token request returned HTTP {resp.status_code}; "
+              f"retrying in {delay}s (attempt {attempt + 1}/{TOKEN_ATTEMPTS})")
+        time.sleep(delay)
+
     if resp.status_code != 200:
         detail = resp.text[:500]
-        message = [f"[auth] token request failed: HTTP {resp.status_code} {detail}"]
+        message = [f"[auth] token request failed after {TOKEN_ATTEMPTS} attempts: "
+                   f"HTTP {resp.status_code} {detail}"]
         if resp.status_code in (400, 401) and "invalid_client" in detail:
             keyset_env = config.keyset_environment(client_id)
             message.append(
