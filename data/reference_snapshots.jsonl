@@ -1321,3 +1321,4 @@
 {"bucket": "2012|topps|446|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 58.32, "reference": 40.0}
 {"bucket": "2018|panini donruss|317|base|PSA|10", "comp_count": 34, "day": "2026-08-21", "median": 159.5, "reference": 134.99}
 {"bucket": "2019|panini nba hoops|297|base|PSA|10", "comp_count": 31, "day": "2026-08-21", "median": 37.05, "reference": 14.99}
+{"bucket": "2018|topps|us1|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 675.0, "reference": 627.0}
