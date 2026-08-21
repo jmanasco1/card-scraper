@@ -1341,3 +1341,4 @@
 {"bucket": "2024|panini absolute|103|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 75.0, "reference": 59.99}
 {"bucket": "2019|panini donruss|302|base|PSA|10", "comp_count": 25, "day": "2026-08-21", "median": 55.0, "reference": 45.0}
 {"bucket": "2020|panini phoenix|114|base|PSA|10", "comp_count": 20, "day": "2026-08-21", "median": 80.49, "reference": 65.0}
+{"bucket": "2019|topps|250|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 239.99, "reference": 199.99}
