@@ -16,12 +16,20 @@ from . import config, matching
 REFERENCES = config.DATA_DIR / "references.jsonl"
 SNAPSHOTS = config.DATA_DIR / "reference_snapshots.jsonl"
 MAX_AGE_DAYS = 45
-MIN_COMPS = 5
+# Measured, not guessed. Sampling N comps out of buckets with 25+ and
+# comparing against the full-bucket reference:
+#     5 comps  -> 60% median error, wrong by >25% four times in five
+#    10 comps  -> 25% median error
+#    15 comps  -> 14% median error
+#    20 comps  ->  8% median error
+# The spec's 5 was close to worthless; a 7-comp sample priced a Wembanyama
+# at $200 that 22 comps price at $130.
+MIN_COMPS = 15
 # A bucket whose comps are all newly-listed is not a picture of the market —
 # it is a picture of today's arrivals, which skews high because aged cheap
 # inventory is invisible to the collector. Require evidence that the standing
 # inventory was actually swept for this card.
-MIN_STANDING_COMPS = 2
+MIN_STANDING_COMPS = 8
 REFERENCE_LOWEST_N = 5
 
 

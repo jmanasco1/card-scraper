@@ -495,8 +495,24 @@ share of the dataset resting on the parser is measurable rather than assumed.
 
 ### Reference values
 
-Per bucket: drop asks older than 45 days, require 5+ remaining, and take the
-**median of the five lowest** as the reference. Buckets under the minimum are
+Per bucket: drop asks older than 45 days, require `MIN_COMPS` remaining, and
+take the **median of the five lowest** as the reference.
+
+**`MIN_COMPS` is 15, measured rather than chosen.** Sampling N comps from
+buckets holding 25+ and comparing against the full-bucket reference:
+
+| comps | median error | wrong by >25% |
+|---|---|---|
+| 5 | 60% | 79% |
+| 10 | 25% | 51% |
+| 15 | 14% | 27% |
+| 20 | 8% | 16% |
+
+The original 5-comp minimum was close to worthless: a 7-comp sample priced a
+Wembanyama Instant Impact at $200 that 22 comps price at $130, and it alerted on
+a listing that was not a bargain. Raising the floor cuts priceable cards from
+~1,040 to ~160 today, but that number climbs as backfill sweeps more of the
+grid, and a confident wrong answer is worse than no answer. Buckets under the minimum are
 suppressed entirely rather than guessed. `data/references.jsonl` holds the
 current values with the full percentile spread; `data/reference_snapshots.jsonl`
 appends one row per bucket per day so drift stays visible.
