@@ -1067,3 +1067,162 @@
 {"bucket": "2024|bowman|16|refractor|PSA|10", "comp_count": 6, "day": "2026-08-20", "median": 200.0, "reference": 199.99}
 {"bucket": "2024|bowman|17|refractor|PSA|10", "comp_count": 6, "day": "2026-08-20", "median": 329.99, "reference": 329.99}
 {"bucket": "2024|bowman|bdc-2|refractor|PSA|10", "comp_count": 6, "day": "2026-08-20", "median": 100.0, "reference": 100.0}
+{"bucket": "2023|panini prizm|339|base|PSA|10", "comp_count": 44, "day": "2026-08-21", "median": 70.0, "reference": 40.0}
+{"bucket": "2023|panini prizm|6|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 49.99, "reference": 30.0}
+{"bucket": "2023|panini prizm|343|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 29.87, "reference": 16.99}
+{"bucket": "2023|panini prizm|339|lazer|PSA|10", "comp_count": 20, "day": "2026-08-21", "median": 120.0, "reference": 99.99}
+{"bucket": "2023|panini prizm|397|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 58.2, "reference": 17.99}
+{"bucket": "2021|panini prizm|334|base|PSA|9", "comp_count": 15, "day": "2026-08-21", "median": 24.4, "reference": 12.0}
+{"bucket": "2019|panini prizm|252|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 25.0, "reference": 16.92}
+{"bucket": "2019|panini prizm|250|base|PSA|10", "comp_count": 23, "day": "2026-08-21", "median": 19.95, "reference": 14.39}
+{"bucket": "2019|panini prizm|249|base|PSA|10", "comp_count": 49, "day": "2026-08-21", "median": 54.89, "reference": 29.99}
+{"bucket": "2020|panini prizm|339|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 27.49, "reference": 18.0}
+{"bucket": "2019|panini prizm|322|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 20.47, "reference": 12.0}
+{"bucket": "2019|panini prizm|279|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 23.95, "reference": 15.19}
+{"bucket": "2019|panini prizm|302|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 48.7, "reference": 25.0}
+{"bucket": "2020|panini prizm|307|base|PSA|10", "comp_count": 35, "day": "2026-08-21", "median": 149.99, "reference": 118.0}
+{"bucket": "2020|panini prizm|343|base|PSA|9", "comp_count": 27, "day": "2026-08-21", "median": 38.2, "reference": 20.0}
+{"bucket": "2020|panini prizm|325|base|PSA|9", "comp_count": 47, "day": "2026-08-21", "median": 39.99, "reference": 21.0}
+{"bucket": "2020|panini prizm|339|base|PSA|9", "comp_count": 27, "day": "2026-08-21", "median": 19.99, "reference": 15.0}
+{"bucket": "2020|panini prizm|325|base|PSA|10", "comp_count": 36, "day": "2026-08-21", "median": 100.0, "reference": 74.99}
+{"bucket": "2019|panini prizm|288|base|PSA|10", "comp_count": 20, "day": "2026-08-21", "median": 29.99, "reference": 14.99}
+{"bucket": "2020|panini prizm|363|base|PSA|9", "comp_count": 16, "day": "2026-08-21", "median": 36.31, "reference": 23.0}
+{"bucket": "2019|panini prizm|129|base|PSA|10", "comp_count": 27, "day": "2026-08-21", "median": 57.18, "reference": 44.99}
+{"bucket": "2020|panini prizm|307|base|PSA|9", "comp_count": 31, "day": "2026-08-21", "median": 49.99, "reference": 30.0}
+{"bucket": "2019|panini prizm|301|base|PSA|9", "comp_count": 18, "day": "2026-08-21", "median": 34.73, "reference": 25.55}
+{"bucket": "2022|panini prizm|353|base|PSA|9", "comp_count": 16, "day": "2026-08-21", "median": 50.0, "reference": 39.99}
+{"bucket": "2023|panini prizm|339|base|PSA|9", "comp_count": 59, "day": "2026-08-21", "median": 24.99, "reference": 14.52}
+{"bucket": "2020|panini prizm|343|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 83.46, "reference": 65.0}
+{"bucket": "2019|panini prizm|248|base|PSA|10", "comp_count": 33, "day": "2026-08-21", "median": 39.95, "reference": 26.4}
+{"bucket": "2020|panini prizm|398|base|PSA|9", "comp_count": 15, "day": "2026-08-21", "median": 40.49, "reference": 30.0}
+{"bucket": "2019|panini prizm|253|white|PSA|10", "comp_count": 27, "day": "2026-08-21", "median": 29.99, "reference": 10.0}
+{"bucket": "2023|panini prizm|311|silver prizm|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 245.0, "reference": 220.0}
+{"bucket": "2022|panini prizm|353|base|PSA|10", "comp_count": 25, "day": "2026-08-21", "median": 130.0, "reference": 95.0}
+{"bucket": "2023|panini prizm|357|silver prizm|PSA|9", "comp_count": 15, "day": "2026-08-21", "median": 55.0, "reference": 49.0}
+{"bucket": "2019|panini prizm|273|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 18.45, "reference": 12.5}
+{"bucket": "2019|panini prizm|75|base|PSA|10", "comp_count": 27, "day": "2026-08-21", "median": 47.07, "reference": 24.0}
+{"bucket": "2019|panini prizm|259|base|PSA|10", "comp_count": 32, "day": "2026-08-21", "median": 23.12, "reference": 11.0}
+{"bucket": "2019|panini prizm|256|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 17.52, "reference": 10.0}
+{"bucket": "2023|panini prizm|1|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 200.0, "reference": 175.0}
+{"bucket": "2023|panini prizm|136|base|PSA|10", "comp_count": 54, "day": "2026-08-21", "median": 450.0, "reference": 389.99}
+{"bucket": "2023|panini prizm|3|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 187.49, "reference": 130.0}
+{"bucket": "2020|panini donruss optic|154|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 185.12, "reference": 55.0}
+{"bucket": "2020|panini donruss optic|153|base|PSA|10", "comp_count": 43, "day": "2026-08-21", "median": 150.0, "reference": 68.0}
+{"bucket": "2018|topps|18|base|PSA|10", "comp_count": 31, "day": "2026-08-21", "median": 20.0, "reference": 13.0}
+{"bucket": "2020|bowman chrome|50|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 32.45, "reference": 19.99}
+{"bucket": "2020|panini donruss optic|151|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 427.0, "reference": 110.1}
+{"bucket": "2019|bowman chrome|26|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 49.7, "reference": 32.99}
+{"bucket": "2020|panini select|46|base|PSA|10", "comp_count": 27, "day": "2026-08-21", "median": 64.95, "reference": 47.06}
+{"bucket": "2020|panini select|44|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 71.9, "reference": 34.99}
+{"bucket": "2023|panini select|87|blue prizm|PSA|10", "comp_count": 20, "day": "2026-08-21", "median": 249.5, "reference": 180.0}
+{"bucket": "2023|panini select|9|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 200.0, "reference": 169.99}
+{"bucket": "2020|panini donruss optic|164|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 219.75, "reference": 75.0}
+{"bucket": "2018|topps|699|base|PSA|10", "comp_count": 21, "day": "2026-08-21", "median": 26.7, "reference": 15.0}
+{"bucket": "2023|panini select|87|blue|PSA|10", "comp_count": 61, "day": "2026-08-21", "median": 199.0, "reference": 150.0}
+{"bucket": "2020|bowman chrome|90|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 19.8, "reference": 12.79}
+{"bucket": "2023|bowman draft|bdc-106|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 40.0, "reference": 30.0}
+{"bucket": "2023|panini select|87|cracked ice|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 474.5, "reference": 375.0}
+{"bucket": "2023|bowman draft|bd-14|base|PSA|10", "comp_count": 26, "day": "2026-08-21", "median": 114.25, "reference": 95.0}
+{"bucket": "2023|bowman draft|bdc-76|refractor|PSA|10", "comp_count": 55, "day": "2026-08-21", "median": 130.0, "reference": 100.0}
+{"bucket": "2023|bowman draft|bd14|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 115.0, "reference": 94.99}
+{"bucket": "2023|panini select|87|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 175.0, "reference": 129.0}
+{"bucket": "2019|panini chronicles|78|base|PSA|10", "comp_count": 20, "day": "2026-08-21", "median": 19.89, "reference": 14.99}
+{"bucket": "2024|topps now|722|base|PSA|10", "comp_count": 42, "day": "2026-08-21", "median": 122.49, "reference": 84.99}
+{"bucket": "____|bowman s best|1|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 249.95, "reference": 49.99}
+{"bucket": "2023|panini donruss optic|247|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 37.48, "reference": 20.0}
+{"bucket": "2024|topps now|66|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 214.0, "reference": 149.95}
+{"bucket": "2023|panini donruss optic|206|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 89.99, "reference": 74.99}
+{"bucket": "2024|topps now|61|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 37.05, "reference": 26.0}
+{"bucket": "2018|panini prizm|181|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 20.0, "reference": 15.0}
+{"bucket": "2024|topps now|5|base|PSA|10", "comp_count": 39, "day": "2026-08-21", "median": 49.99, "reference": 29.95}
+{"bucket": "2024|topps now|264|base|PSA|10", "comp_count": 23, "day": "2026-08-21", "median": 100.0, "reference": 89.99}
+{"bucket": "2024|topps now|4|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 129.95, "reference": 89.99}
+{"bucket": "2018|panini prizm|280|base|PSA|10", "comp_count": 29, "day": "2026-08-21", "median": 250.0, "reference": 229.99}
+{"bucket": "2018|panini prizm|279|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 22.1, "reference": 12.9}
+{"bucket": "2019|panini chronicles|165|base|PSA|10", "comp_count": 21, "day": "2026-08-21", "median": 50.0, "reference": 29.75}
+{"bucket": "2018|panini prizm|66|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 25.55, "reference": 19.99}
+{"bucket": "____|bowman s best|b25|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 215.6, "reference": 69.99}
+{"bucket": "2024|topps now|12|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 79.99, "reference": 69.99}
+{"bucket": "2018|panini prizm|32|base|PSA|10", "comp_count": 28, "day": "2026-08-21", "median": 20.48, "reference": 11.0}
+{"bucket": "2019|panini chronicles|61|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 34.07, "reference": 15.0}
+{"bucket": "2019|bowman|bp-33|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 45.67, "reference": 29.99}
+{"bucket": "2022|bowman chrome|cpa-wc|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 159.99, "reference": 159.99}
+{"bucket": "2019|panini chronicles|84|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 30.15, "reference": 19.8}
+{"bucket": "2018|panini prizm|78|base|PSA|10", "comp_count": 34, "day": "2026-08-21", "median": 39.34, "reference": 27.5}
+{"bucket": "2024|topps now|1|base|PSA|10", "comp_count": 28, "day": "2026-08-21", "median": 110.56, "reference": 70.0}
+{"bucket": "2018|panini prizm|3|base|PSA|10", "comp_count": 46, "day": "2026-08-21", "median": 94.99, "reference": 70.0}
+{"bucket": "2024|topps now|10|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 132.0, "reference": 80.0}
+{"bucket": "2024|topps now|os13|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 22.99, "reference": 22.99}
+{"bucket": "2023|panini donruss optic|298|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 30.99, "reference": 10.99}
+{"bucket": "2024|topps now|2|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 90.0, "reference": 69.99}
+{"bucket": "2023|panini donruss optic|244|base|PSA|10", "comp_count": 54, "day": "2026-08-21", "median": 122.5, "reference": 35.0}
+{"bucket": "2023|bowman draft|bdc-76|base|PSA|10", "comp_count": 29, "day": "2026-08-21", "median": 99.99, "reference": 84.95}
+{"bucket": "2018|panini prizm|6|silver prizm|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 370.0, "reference": 349.99}
+{"bucket": "2020|topps chrome|150|refractor|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 60.05, "reference": 21.0}
+{"bucket": "2020|topps chrome|60|refractor|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 30.64, "reference": 14.99}
+{"bucket": "2020|topps chrome|150|white|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 20.95, "reference": 12.5}
+{"bucket": "2020|topps chrome|150|blue|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 29.95, "reference": 14.99}
+{"bucket": "2020|bowman|bcp-8|base|PSA|10", "comp_count": 30, "day": "2026-08-21", "median": 40.44, "reference": 20.0}
+{"bucket": "2020|topps chrome|148|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 17.75, "reference": 10.0}
+{"bucket": "2019|bowman|bcp-33|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 57.52, "reference": 44.99}
+{"bucket": "2020|bowman|bp-25|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 60.0, "reference": 54.99}
+{"bucket": "2019|bowman|bcp-82|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 15.78, "reference": 13.41}
+{"bucket": "2020|topps chrome|60|pink refractor|PSA|10", "comp_count": 21, "day": "2026-08-21", "median": 18.99, "reference": 13.99}
+{"bucket": "2023|panini mosaic|292|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 59.0, "reference": 30.0}
+{"bucket": "2020|topps chrome|60|base|PSA|10", "comp_count": 32, "day": "2026-08-21", "median": 16.92, "reference": 13.96}
+{"bucket": "2020|topps chrome|49|base|PSA|10", "comp_count": 25, "day": "2026-08-21", "median": 20.0, "reference": 15.0}
+{"bucket": "2020|topps chrome|200|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 77.5, "reference": 54.99}
+{"bucket": "2020|bowman|bp8|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 20.0, "reference": 19.99}
+{"bucket": "2020|bowman|bp-8|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 25.0, "reference": 14.99}
+{"bucket": "2023|topps chrome|95|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 47.92, "reference": 34.99}
+{"bucket": "2020|topps chrome|60|white|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 19.49, "reference": 10.99}
+{"bucket": "2023|panini donruss optic|213|base|PSA|10", "comp_count": 23, "day": "2026-08-21", "median": 99.99, "reference": 78.0}
+{"bucket": "2019|panini donruss optic|180|white|PSA|10", "comp_count": 26, "day": "2026-08-21", "median": 29.99, "reference": 12.99}
+{"bucket": "2019|panini donruss optic|16|base|PSA|10", "comp_count": 23, "day": "2026-08-21", "median": 57.75, "reference": 32.99}
+{"bucket": "2020|bowman|18|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 17.49, "reference": 14.05}
+{"bucket": "2019|panini mosaic|269|base|PSA|10", "comp_count": 20, "day": "2026-08-21", "median": 40.0, "reference": 15.0}
+{"bucket": "2020|panini mosaic|203|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 39.35, "reference": 20.0}
+{"bucket": "2019|panini donruss optic|168|base|PSA|10", "comp_count": 28, "day": "2026-08-21", "median": 40.0, "reference": 23.0}
+{"bucket": "2019|panini mosaic|8|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 71.28, "reference": 47.0}
+{"bucket": "2020|topps chrome|186|white|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 14.05, "reference": 10.99}
+{"bucket": "2020|panini mosaic|201|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 75.0, "reference": 54.99}
+{"bucket": "2019|panini donruss optic|15|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 29.99, "reference": 15.0}
+{"bucket": "2019|panini mosaic|211|white|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 19.99, "reference": 15.0}
+{"bucket": "2020|bowman|18|white|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 18.0, "reference": 10.0}
+{"bucket": "2019|panini mosaic|209|base|PSA|10", "comp_count": 31, "day": "2026-08-21", "median": 31.0, "reference": 15.0}
+{"bucket": "2020|panini mosaic|263|base|PSA|10", "comp_count": 28, "day": "2026-08-21", "median": 52.44, "reference": 29.99}
+{"bucket": "2020|panini mosaic|261|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 60.0, "reference": 54.3}
+{"bucket": "2019|panini donruss optic|158|base|PSA|10", "comp_count": 30, "day": "2026-08-21", "median": 37.92, "reference": 18.1}
+{"bucket": "2023|topps chrome|1|base|PSA|10", "comp_count": 21, "day": "2026-08-21", "median": 49.99, "reference": 23.0}
+{"bucket": "2019|panini mosaic|219|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 29.99, "reference": 15.0}
+{"bucket": "2019|panini donruss optic|188|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 19.71, "reference": 15.0}
+{"bucket": "2020|panini mosaic|204|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 54.81, "reference": 42.8}
+{"bucket": "2019|panini donruss optic|178|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 20.19, "reference": 17.23}
+{"bucket": "2023|bowman|bcp-139|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 79.99, "reference": 50.0}
+{"bucket": "2023|bowman|bcp-61|base|PSA|10", "comp_count": 21, "day": "2026-08-21", "median": 83.04, "reference": 74.99}
+{"bucket": "2019|panini mosaic|298|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 60.0, "reference": 44.99}
+{"bucket": "2020|bowman|bcp-25|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 158.0, "reference": 130.0}
+{"bucket": "2022|bowman|bcp-50|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 97.5, "reference": 50.0}
+{"bucket": "2020|topps|392|base|PSA|10", "comp_count": 37, "day": "2026-08-21", "median": 14.99, "reference": 12.0}
+{"bucket": "2020|topps|78|base|PSA|10", "comp_count": 25, "day": "2026-08-21", "median": 19.8, "reference": 12.1}
+{"bucket": "2020|topps|292|base|PSA|10", "comp_count": 44, "day": "2026-08-21", "median": 15.09, "reference": 11.75}
+{"bucket": "2020|topps|276|base|PSA|10", "comp_count": 38, "day": "2026-08-21", "median": 52.84, "reference": 34.99}
+{"bucket": "2020|topps|276|orange|PSA|10", "comp_count": 21, "day": "2026-08-21", "median": 45.0, "reference": 35.89}
+{"bucket": "2020|topps|64|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 14.99, "reference": 11.75}
+{"bucket": "2022|bowman|bcp-79|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 67.24, "reference": 60.0}
+{"bucket": "2020|topps|20|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 22.19, "reference": 11.18}
+{"bucket": "2020|topps|392|white|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 14.99, "reference": 10.0}
+{"bucket": "2024|panini donruss|248|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 275.0, "reference": 89.98}
+{"bucket": "2024|panini donruss|29|base|PSA|10", "comp_count": 20, "day": "2026-08-21", "median": 74.99, "reference": 59.99}
+{"bucket": "2024|panini donruss|4|base|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 165.0, "reference": 35.0}
+{"bucket": "2024|panini donruss|389|pink|PSA|10", "comp_count": 16, "day": "2026-08-21", "median": 102.5, "reference": 94.99}
+{"bucket": "2024|panini donruss|5|base|PSA|10", "comp_count": 26, "day": "2026-08-21", "median": 215.0, "reference": 39.95}
+{"bucket": "2024|panini donruss|389|base|PSA|10", "comp_count": 21, "day": "2026-08-21", "median": 57.93, "reference": 42.99}
+{"bucket": "2024|panini donruss|3|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 219.0, "reference": 85.0}
+{"bucket": "2024|panini donruss|11|base|PSA|10", "comp_count": 22, "day": "2026-08-21", "median": 110.55, "reference": 79.99}
+{"bucket": "2024|panini donruss|8|base|PSA|10", "comp_count": 24, "day": "2026-08-21", "median": 150.0, "reference": 79.99}
+{"bucket": "2024|panini donruss|229|base|PSA|10", "comp_count": 18, "day": "2026-08-21", "median": 177.5, "reference": 120.0}
+{"bucket": "2024|panini donruss|2|base|PSA|10", "comp_count": 17, "day": "2026-08-21", "median": 120.0, "reference": 31.99}
+{"bucket": "2024|panini donruss|6|base|PSA|10", "comp_count": 15, "day": "2026-08-21", "median": 135.0, "reference": 50.0}
+{"bucket": "2024|panini donruss|7|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 117.79, "reference": 32.0}
+{"bucket": "2020|topps|229|base|PSA|10", "comp_count": 19, "day": "2026-08-21", "median": 19.8, "reference": 12.0}
