@@ -92,8 +92,16 @@ def main():
     if remaining is not None:
         print(f"[enrich] quota {remaining}/{limit}")
         if remaining < min_quota:
+            msg = (f"skipped: quota {remaining} below enrichment floor "
+                   f"{min_quota}")
             print(f"::warning::Quota {remaining} below enrichment floor "
                   f"{min_quota}; skipping enrichment this run.")
+            # Always leave the summary behind — the workflow cats it, and an
+            # early return without it failed the whole run.
+            (config.ROOT / "enrich_summary.txt").write_text(msg + "\n")
+            if os.environ.get("GITHUB_OUTPUT"):
+                with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+                    fh.write("written=0\n")
             return 0
         # Never spend the run's budget down past the floor.
         max_calls = max(0, min(max_calls, remaining - min_quota))

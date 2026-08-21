@@ -142,9 +142,9 @@ jobs:
           python -m ebay_scanner.reference
           python -m ebay_scanner.scanner
           python -m ebay_scanner.episodes
-          { echo '## Reference values'; echo; echo '```'; cat reference_summary.txt; echo '```'; \
-            echo '## BIN scan'; echo; echo '```'; cat scan_summary.txt; echo '```'; \
-            echo '## Episodes'; echo; echo '```'; cat episodes_summary.txt; echo '```'; \
+          { echo '## Reference values'; echo; echo '```'; cat reference_summary.txt 2>/dev/null || echo '(no summary written)'; echo '```'; \
+            echo '## BIN scan'; echo; echo '```'; cat scan_summary.txt 2>/dev/null || echo '(no summary written)'; echo '```'; \
+            echo '## Episodes'; echo; echo '```'; cat episodes_summary.txt 2>/dev/null || echo '(no summary written)'; echo '```'; \
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit scanner outputs
@@ -169,7 +169,7 @@ jobs:
         run: |
           python -m ebay_scanner.backfill
           { echo '## Backfill'; echo; echo '```'; \
-            cat backfill_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            cat backfill_summary.txt 2>/dev/null || echo '(no summary written)'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit backfill data
         if: ${{ (inputs.mode == 'backfill' || github.event.schedule == '23 */4 * * *') && steps.backfill.outputs.new_count != '0' }}
@@ -215,7 +215,7 @@ jobs:
         run: |
           python -m ebay_scanner.recheck
           { echo '## Listing re-check'; echo; echo '```'; \
-            cat recheck_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            cat recheck_summary.txt 2>/dev/null || echo '(no summary written)'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enrich listing aspects
         id: enrich
@@ -223,7 +223,7 @@ jobs:
         run: |
           python -m ebay_scanner.enrich
           { echo '## Aspect enrichment'; echo; echo '```'; \
-            cat enrich_summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            cat enrich_summary.txt 2>/dev/null || echo '(no summary written)'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit aspect data
         if: ${{ inputs.mode == 'enrich' || github.event.schedule == '37 * * * *' }}
