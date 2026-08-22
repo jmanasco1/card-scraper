@@ -1666,3 +1666,6 @@
 {"bucket": "2005|topps|677|base|PSA|10", "comp_count": 18, "day": "2026-08-22", "median": 315.0, "reference": 265.0}
 {"bucket": "2010|topps|2|base|PSA|10", "comp_count": 15, "day": "2026-08-22", "median": 224.95, "reference": 200.0}
 {"bucket": "2018|panini select|25|base|PSA|10", "comp_count": 15, "day": "2026-08-22", "median": 150.0, "reference": 115.14}
+{"bucket": "1991|skybox|534|base|PSA|10", "comp_count": 18, "day": "2026-08-22", "median": 350.5, "reference": 299.99}
+{"bucket": "1992|upper deck|67|base|PSA|10", "comp_count": 16, "day": "2026-08-22", "median": 365.0, "reference": 350.0}
+{"bucket": "1991|skybox|334|base|PSA|10", "comp_count": 16, "day": "2026-08-22", "median": 299.0, "reference": 245.23}
