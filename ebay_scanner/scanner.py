@@ -18,7 +18,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from . import auth, config, matching, reference, verify
-from .client import EbayClient
+from .client import EbayClient, browse_remaining
 
 FLAGS = config.DATA_DIR / "flags.jsonl"
 
@@ -43,7 +43,20 @@ MAX_ALERTS_PER_DAY = int(os.environ.get("ALERT_DAILY_CAP", "200"))
 # against a 5,000/day ceiling, so it is budgeted. Candidates past the budget are
 # recorded but never sent: an unverified alert is what the field reports were
 # complaining about.
-VERIFY_MAX_CANDIDATES = int(os.environ.get("VERIFY_MAX_CANDIDATES", "150"))
+# 15 candidates costs 30 calls a run. The collection cron fires 96 times a day,
+# so a permanently saturated budget would want ~2,900 calls against a 5,000/day
+# ceiling that collection, re-check, enrichment and backfill already draw on.
+# That ceiling is enforced by the quota floor below rather than by this number:
+# saturation only happens while a backlog is draining, and the floor makes the
+# run stand down before collection is ever squeezed.
+VERIFY_MAX_CANDIDATES = int(os.environ.get("VERIFY_MAX_CANDIDATES", "15"))
+
+# Collection is the one job that cannot be caught up later: an uncollected
+# listing is gone for good, while an unverified candidate simply waits for the
+# next run. So verification reads the live quota first and stands down below
+# this floor, the same contract enrichment already follows.
+VERIFY_MIN_QUOTA = int(os.environ.get("VERIFY_MIN_QUOTA", "1200"))
+CALLS_PER_VERIFY = 2
 
 
 def already_flagged():
@@ -184,7 +197,25 @@ def verify_candidates(candidates):
             c["verification"] = "unavailable"
         return []
 
-    survivors, budget = [], VERIFY_MAX_CANDIDATES
+    budget = VERIFY_MAX_CANDIDATES
+    try:
+        remaining, limit, _ = browse_remaining(client.rate_limits())
+    except Exception:                                     # noqa: BLE001
+        remaining = limit = None
+    if remaining is not None:
+        print(f"[scan] quota {remaining}/{limit}")
+        if remaining < VERIFY_MIN_QUOTA:
+            print(f"::warning::Quota {remaining} below the verification floor "
+                  f"{VERIFY_MIN_QUOTA}; no alerts this run so collection keeps "
+                  f"its budget.")
+            for c in candidates:
+                c["verification"] = "not verified: quota floor"
+            return []
+        budget = max(0, min(budget,
+                            (remaining - VERIFY_MIN_QUOTA) // CALLS_PER_VERIFY))
+    print(f"[scan] verifying up to {budget} of {len(candidates)} candidates")
+
+    survivors = []
     for c in candidates:
         if budget <= 0:
             c["verification"] = "not verified: budget exhausted"

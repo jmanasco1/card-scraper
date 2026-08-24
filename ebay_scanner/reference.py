@@ -22,14 +22,22 @@ MAX_AGE_DAYS = 45
 #    10 comps  -> 25% median error
 #    15 comps  -> 14% median error
 #    20 comps  ->  8% median error
-# The spec's 5 was close to worthless; a 7-comp sample priced a Wembanyama
-# at $200 that 22 comps price at $130.
-MIN_COMPS = 15
+# That measurement set this to 15 while the corpus reference was itself the
+# alert criterion - a 7-comp sample priced a Wembanyama at $200 that 22 comps
+# price at $130. It is no longer the criterion. scanner.py re-checks every
+# candidate against the live market before alerting, so this stage only has to
+# nominate cheaply and the sampling error above is caught downstream.
+#
+# Holding 15 here cost everything: 337 of 134,920 buckets qualified, the scan
+# produced zero candidates, and no alert could fire at all. Relaxing to 6
+# restores 1,856 buckets. Raise it again only if live verification is removed.
+MIN_COMPS = 6
 # A bucket whose comps are all newly-listed is not a picture of the market —
 # it is a picture of today's arrivals, which skews high because aged cheap
 # inventory is invisible to the collector. Require evidence that the standing
-# inventory was actually swept for this card.
-MIN_STANDING_COMPS = 8
+# inventory was actually swept for this card. Relaxed from 8 alongside
+# MIN_COMPS, and for the same reason.
+MIN_STANDING_COMPS = 3
 REFERENCE_LOWEST_N = 5
 
 
