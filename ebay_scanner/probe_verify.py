@@ -82,13 +82,25 @@ def main():
             print(f"  live:     query failed: {exc}")
             continue
         ok, why = verify.passes(v)
-        kept += ok
         prices = v["live_prices"]
         print(f"  live:     {v['live_comps']} comps of {v['live_returned']} "
               f"returned (eBay total {v['live_total']}), still_listed="
               f"{v['still_listed']}")
         print(f"  cheapest listed right now: "
               + (", ".join(f"${p:,.2f}" for p in prices) if prices else "none"))
+        live_ref = v.get("live_reference")
+        if ok and live_ref:
+            if c["price"] > scanner.DISCOUNT * live_ref:
+                pct = (1 - c["price"] / live_ref) * 100
+                ok, why = False, (f"only {pct:.0f}% below the live market "
+                                  f"(${live_ref:.2f})")
+            else:
+                why = (f"verified - live reference ${live_ref:.2f}, real saving "
+                       f"${live_ref - c['price']:.2f} "
+                       f"(we would have claimed ${c['saving']:.2f})")
+        elif ok:
+            ok, why = False, "no live reference"
+        kept += ok
         print(f"  verdict:  {'KEEP' if ok else 'DROP'} - {why}")
     print("=" * 94)
     print(f"[probe-verify] {kept} of the top {min(limit, len(cands))} "

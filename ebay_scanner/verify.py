@@ -29,6 +29,7 @@ means gone.
 """
 
 import re
+import statistics
 
 from . import backfill, config, matching, query
 
@@ -168,7 +169,11 @@ def check(client, cfg, sl, bucket_key, item_id, price, player=None):
         "still_listed": is_live(client, item_id),
     }
     if len(comps) >= MIN_LIVE_COMPS:
-        verdict["live_reference"] = round(sum(comps[:5]) / len(comps[:5]), 2)
+        # Median of the five cheapest live asks. The cheap cluster is where the
+        # market actually is; a lone optimistic listing far above it says
+        # nothing about what the card sells for.
+        low5 = comps[:5]
+        verdict["live_reference"] = round(statistics.median(low5), 2)
     verdict["is_lowest"] = bool(comps and price <= comps[0] + LOWEST_TOLERANCE)
     return verdict
 

@@ -234,10 +234,34 @@ def verify_candidates(candidates):
             c["live"] = {k: v[k] for k in
                          ("live_total", "live_comps", "live_low",
                           "live_prices", "still_listed", "is_lowest")}
-            if v.get("live_reference"):
-                c["live_reference"] = v["live_reference"]
-        if ok:
-            survivors.append(c)
+        if not ok:
+            continue
+
+        # The corpus reference is not fit to quote. Measured against the live
+        # market it runs 10-15x high: a Luka Doncic carrying a $495 corpus
+        # reference is listed at $30 all over eBay, a Wembanyama at $539 is
+        # listed at $35. Quoting it produced alerts advertising a $379 saving
+        # on a card whose real saving was about $8 - the single thing the user
+        # kept catching. The live cheap cluster is the market, so it sets both
+        # the number we quote and the discount test we apply.
+        live_ref = v.get("live_reference")
+        if not live_ref:
+            c["verification"] = "no live reference"
+            continue
+        if c["price"] > DISCOUNT * live_ref:
+            c["verification"] = (f"only {(1 - c['price'] / live_ref) * 100:.0f}%"
+                                 f" below the live market (${live_ref:.2f})")
+            continue
+        c["corpus_reference"] = c["reference"]
+        c["reference"] = live_ref
+        c["comp_count"] = v["live_comps"]
+        c["saving"] = round(live_ref - c["price"], 2)
+        c["discount_pct"] = round((1 - c["price"] / live_ref) * 100, 1)
+        survivors.append(c)
+
+    # Ranking is by saving, which every survivor has just had restated in live
+    # terms, so the order computed from corpus numbers no longer holds.
+    survivors.sort(key=lambda x: (-x["saving"], -x["discount_pct"]))
     return survivors
 
 
