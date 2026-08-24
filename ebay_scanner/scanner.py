@@ -27,7 +27,11 @@ ACT_MIN, ACT_MAX = 10.0, 800.0
 # Slices pin set/grader/grade in the query; aspects come from getItem.
 TRUSTED_METHODS = ("slice", "aspects", "catalog")
 DISCOUNT = 0.70
-MAX_AGE_HOURS = 24
+# A cheap card that has sat for months is still buyable today, and is often the
+# best deal on the board. Restricting to the last 24h hid every one of them:
+# measured against the live corpus, 97 underpriced listings were sitting and
+# exactly 0 were fresh enough to alert. 0 disables the age limit entirely.
+MAX_AGE_HOURS = int(os.environ.get("MAX_LISTING_AGE_HOURS", "0"))
 # A busy day is not a fault condition. This is only a runaway guard so a
 # broken reference cannot send thousands of messages; overflow still sends the
 # best ones rather than going silent. Override with ALERT_DAILY_CAP.
@@ -81,8 +85,10 @@ def notify(flag):
     price, ref = flag["price"], flag["reference"]
     line1 = f"*{flag['discount_pct']:.0f}% under reference*"
     saving = flag.get("saving", ref - price)
+    age = flag.get("listingAgeDays")
+    age_txt = f" · listed {age}d ago" if age is not None else ""
     line2 = (f"${price:.2f}  vs  ${ref:.2f}   (save ${saving:.2f})\n"
-             f"{flag['comp_count']} comps · {flag['bucket']}")
+             f"{flag['comp_count']} comps{age_txt}")
     title = (flag["title"] or "")[:150]
     url = flag.get("itemWebUrl") or ""
 
@@ -141,7 +147,7 @@ def main():
     seen = already_flagged()
     day = now.strftime("%Y-%m-%d")
     sent_today = flags_today(day)
-    cutoff = now - timedelta(hours=MAX_AGE_HOURS)
+    cutoff = (now - timedelta(hours=MAX_AGE_HOURS)) if MAX_AGE_HOURS else None
 
     candidates = []
     for r in rows:
@@ -151,7 +157,7 @@ def main():
         if price is None or not (ACT_MIN <= price <= ACT_MAX):
             continue
         created = reference._parse(r.get("itemCreationDate"))
-        if not created or created < cutoff:
+        if cutoff and (not created or created < cutoff):
             continue
         key, method, _ = matching.bucket_key(r, aspects.get(r.get("itemId")))
         if method not in TRUSTED_METHODS:
@@ -182,6 +188,7 @@ def main():
             "distribution": {k: ref[k] for k in
                              ("low", "p10", "p25", "median", "p75", "p90",
                               "high", "oldest_days", "newest_days")},
+            "listingAgeDays": (now - created).days if created else None,
             "flaggedAt": now.isoformat(),
         })
 
