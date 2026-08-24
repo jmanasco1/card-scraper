@@ -3873,3 +3873,9 @@
 {"bucket": "2024|bowman|bdc-2|refractor|PSA|10", "comp_count": 6, "day": "2026-08-24", "median": 100.0, "reference": 100.0}
 {"bucket": "2007|bowman chrome|cm2|base|PSA|10", "comp_count": 9, "day": "2026-08-24", "median": 200.0, "reference": 100.0}
 {"bucket": "2007|bowman chrome|cg19|base|PSA|10", "comp_count": 6, "day": "2026-08-24", "median": 200.0, "reference": 200.0}
+{"bucket": "2020|panini mosaic|203|camo|PSA|10", "comp_count": 8, "day": "2026-08-24", "median": 30.0, "reference": 25.0}
+{"bucket": "2020|panini mosaic|261|camo|PSA|10", "comp_count": 8, "day": "2026-08-24", "median": 100.0, "reference": 99.0}
+{"bucket": "2022|panini mosaic|367|camo|PSA|10", "comp_count": 6, "day": "2026-08-24", "median": 100.0, "reference": 99.99}
+{"bucket": "2020|topps chrome|ff-5|flash|PSA|10", "comp_count": 6, "day": "2026-08-24", "median": 18.99, "reference": 18.0}
+{"bucket": "2019|panini mosaic|211|black|PSA|10", "comp_count": 7, "day": "2026-08-24", "median": 18.65, "reference": 15.2}
+{"bucket": "2020|panini mosaic|211|camo|PSA|10", "comp_count": 10, "day": "2026-08-24", "median": 100.0, "reference": 80.0}
