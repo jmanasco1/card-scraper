@@ -116,12 +116,24 @@ def notify(flag):
     Returns True when at least one channel accepted the message.
     """
     price, ref = flag["price"], flag["reference"]
-    line1 = f"*{flag['discount_pct']:.0f}% under reference*"
     saving = flag.get("saving", ref - price)
+    # Lead with the gap to the next cheapest listing. It is the smaller, harder
+    # number, and it is the one that holds up when the alert is checked against
+    # eBay - which is the check that repeatedly caught the old headline out.
+    nxt = flag.get("next_cheapest")
+    edge = flag.get("edge")
+    if nxt is not None and edge is not None:
+        line1 = f"*${edge:.2f} under the next cheapest*"
+        detail = (f"${price:.2f}   next cheapest ${nxt:.2f}\n"
+                  f"market ~${ref:.2f} across {flag['comp_count']} live "
+                  f"listings (${saving:.2f} under)")
+    else:
+        line1 = f"*{flag['discount_pct']:.0f}% under reference*"
+        detail = (f"${price:.2f}  vs  ${ref:.2f}   (save ${saving:.2f})\n"
+                  f"{flag['comp_count']} comps")
     age = flag.get("listingAgeDays")
-    age_txt = f" · listed {age}d ago" if age is not None else ""
-    line2 = (f"${price:.2f}  vs  ${ref:.2f}   (save ${saving:.2f})\n"
-             f"{flag['comp_count']} comps{age_txt}")
+    age_txt = f"\nlisted {age}d ago" if age is not None else ""
+    line2 = detail + age_txt
     title = (flag["title"] or "")[:150]
     url = flag.get("itemWebUrl") or ""
 
@@ -252,16 +264,26 @@ def verify_candidates(candidates):
             c["verification"] = (f"only {(1 - c['price'] / live_ref) * 100:.0f}%"
                                  f" below the live market (${live_ref:.2f})")
             continue
+        # Two different numbers, and the honest headline is the smaller one.
+        # A Dylan Crews at $69.99 sits under a $320 live reference, but there
+        # is a $90 listing right behind it: buy and flip and the edge is $20,
+        # not $250. The reference describes the cluster; the gap to the next
+        # cheapest listing is what actually survives someone going and looking,
+        # which is exactly the check that kept failing.
         c["corpus_reference"] = c["reference"]
         c["reference"] = live_ref
         c["comp_count"] = v["live_comps"]
+        c["next_cheapest"] = v["live_low"]
+        c["edge"] = round(v["live_low"] - c["price"], 2)
         c["saving"] = round(live_ref - c["price"], 2)
         c["discount_pct"] = round((1 - c["price"] / live_ref) * 100, 1)
         survivors.append(c)
 
     # Ranking is by saving, which every survivor has just had restated in live
     # terms, so the order computed from corpus numbers no longer holds.
-    survivors.sort(key=lambda x: (-x["saving"], -x["discount_pct"]))
+    # Rank by the edge, not the reference-derived saving: a card with a large
+    # notional discount but another copy listed a dollar cheaper is not a find.
+    survivors.sort(key=lambda x: (-x["edge"], -x["saving"]))
     return survivors
 
 
