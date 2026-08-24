@@ -83,16 +83,20 @@ def card_number(bucket_key):
 def title_matcher(card_no):
     """Regex deciding whether a title really is this card number.
 
-    A bare short number matches far too much - '6' appears in most titles - so
-    a purely numeric card number must carry the '#'. Alphanumerics like US1 or
-    83T are distinctive enough to stand alone. Rejecting a legitimate comp only
-    shrinks the comp count and suppresses an alert, so the strict direction is
-    the safe one.
+    An earlier version required the '#' on purely numeric card numbers,
+    reasoning that rejecting a legitimate comp only shrinks the count and
+    suppresses an alert. That reasoning was backwards, and it shipped.
+
+    The two errors are not symmetric. Dropping a real cheap comp raises the
+    apparent floor and makes the candidate look like the cheapest listing when
+    it is not - which manufactures an alert. Admitting an unrelated cheap card
+    lowers the floor and suppresses one. False alerts are the failure being
+    fixed here, so loose is the safe direction, and plenty of real listings
+    write the number without a '#'.
+
+    Word boundaries still keep '64' from matching '1964' or '640'.
     """
-    escaped = re.escape(card_no)
-    if card_no.isdigit():
-        return re.compile(rf"#\s*{escaped}\b", re.I)
-    return re.compile(rf"#?\s*\b{escaped}\b", re.I)
+    return re.compile(rf"#?\s*\b{re.escape(card_no)}\b", re.I)
 
 
 def _price(item):

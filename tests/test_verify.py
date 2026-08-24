@@ -37,19 +37,36 @@ sl = {"aspect_filter": "Set:{2023 Panini Prizm}", "set": "2023 Panini Prizm",
       "grader": "PSA", "grade": "10", "name": "x"}
 KEY = "2023|panini prizm|136|base|PSA|10"
 
-# Cheapest at $149.99 against a $250 low: comps filtered, and it survives.
+# A comp writing the card number without a '#' still counts. Dropping it would
+# raise the apparent floor and manufacture an alert, which is the failure this
+# whole module exists to stop, so the loose match is the safe one.
 v = verify.check(Stub(items), cfg, sl, KEY, "SELF", 149.99)
-assert v["live_comps"] == 4, v          # B excluded (bare number), SELF excluded
-assert v["live_low"] == 250.0, v
-assert v["is_lowest"] is True, v
+assert v["live_comps"] == 5, v          # only SELF excluded
+assert v["live_low"] == 9.99, v         # the bare-number comp is the cheapest
+assert v["is_lowest"] is False, v
 ok, why = verify.passes(v)
-assert ok, why
-print(f"  ok  comp filter    -> kept {v['live_comps']} of 6 "
-      f"(self excluded, bare-number title rejected), low ${v['live_low']}")
-print(f"  ok  cheapest       -> KEEP: {why}")
+assert not ok
+print(f"  ok  comp filter    -> kept {v['live_comps']} of 6 (self excluded, "
+      f"bare-number comp counted), low ${v['live_low']}")
+print(f"  ok  undercut by it -> DROP: {why}")
+
+# Same market with that cheap comp removed: now it really is the cheapest.
+alone = [i for i in items if i["itemId"] != "B"]
+v1 = verify.check(Stub(alone), cfg, sl, KEY, "SELF", 149.99)
+assert v1["live_low"] == 250.0 and v1["is_lowest"] is True, v1
+ok1, why1 = verify.passes(v1)
+assert ok1, why1
+print(f"  ok  cheapest       -> KEEP: {why1}")
+
+# A year in the title must not be read as the card number.
+years = [{"itemId": str(i), "title": "1964 Topps Mantle #136 PSA 10",
+          "price": {"value": "500.00"}} for i in range(4)]
+vy = verify.check(Stub(years), cfg, sl, KEY, "SELF", 149.99)
+assert vy["live_comps"] == 4, vy        # matched on #136, not on 1964
+print(f"  ok  year not a no. -> kept {vy['live_comps']} (matched #136, not 1964)")
 
 # Same market, but the candidate is no longer the cheapest.
-undercut = items + [{"itemId": "F", "title": "Wemby #136 Prizm",
+undercut = alone + [{"itemId": "F", "title": "Wemby #136 Prizm",
                      "price": {"value": "99.00"}}]
 v2 = verify.check(Stub(undercut), cfg, sl, KEY, "SELF", 149.99)
 assert v2["live_low"] == 99.0, v2
@@ -63,7 +80,7 @@ class Dead(Stub):
     def get(self, url, **kw):
         class R: status_code = 404
         return R()
-v3 = verify.check(Dead(items), cfg, sl, KEY, "SELF", 149.99)
+v3 = verify.check(Dead(alone), cfg, sl, KEY, "SELF", 149.99)
 ok3, why3 = verify.passes(v3)
 assert not ok3
 print(f"  ok  ended listing  -> DROP: {why3}")

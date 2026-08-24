@@ -280,6 +280,22 @@ def main():
             continue          # only itself held the bucket above the minimum
         if price > DISCOUNT * peer["reference"]:
             continue
+        # The slice pins Grade in the query, so eBay returns whatever the
+        # seller typed into that aspect - and sellers get it wrong. Two alerts
+        # went out for PSA 9 cards sitting in PSA 10 buckets, priced against
+        # the PSA 10 market: a $101 Yamal against a $650 "reference" when PSA 9
+        # copies sell around $100. The error becomes the saving, so these
+        # mispriced cards sort straight to the top of the ranking.
+        #
+        # Alert only when the title independently corroborates the grade. A
+        # title that contradicts the aspect is evidence the aspect is wrong; a
+        # title that states no grade leaves nothing to corroborate it with.
+        parsed = matching.parse_title(r.get("title"))
+        bucket_grader, bucket_grade = key.split("|")[4], key.split("|")[5]
+        if not parsed["grade"] or str(parsed["grade"]) != str(bucket_grade):
+            continue
+        if parsed["grader"] and parsed["grader"] != bucket_grader:
+            continue
         ref = dict(ref, reference=peer["reference"],
                    comp_count=peer["comp_count"])
         candidates.append({
