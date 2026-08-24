@@ -141,7 +141,7 @@ def main():
         return test_notify()
     rows, aspects, gone = reference.load_corpus()
     now = datetime.now(timezone.utc)
-    references, stats, _ = reference.build(rows, aspects, gone, now)
+    references, stats, buckets = reference.build(rows, aspects, gone, now)
     print(f"[scan] {len(references):,} buckets carry a valid reference")
 
     seen = already_flagged()
@@ -169,13 +169,14 @@ def main():
         # bucket with this listing removed so it cannot vote on its own value.
         if price > DISCOUNT * ref["reference"]:
             continue
-        peer_refs, _, _ = reference.build(rows, aspects, gone, now,
-                                          exclude_item=r["itemId"])
-        ref = peer_refs.get(key)
-        if not ref or ref["comp_count"] < reference.MIN_COMPS:
+        peer = reference.price_bucket([e[0] for e in buckets.get(key, [])],
+                                      now, exclude_item=r["itemId"])
+        if not peer:
             continue          # only itself held the bucket above the minimum
-        if price > DISCOUNT * ref["reference"]:
+        if price > DISCOUNT * peer["reference"]:
             continue
+        ref = dict(ref, reference=peer["reference"],
+                   comp_count=peer["comp_count"])
         candidates.append({
             "itemId": r["itemId"], "title": r.get("title"),
             "price": price, "itemWebUrl": r.get("itemWebUrl"),

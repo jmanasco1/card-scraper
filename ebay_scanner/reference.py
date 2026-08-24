@@ -139,6 +139,33 @@ def build(rows, aspects, gone, now=None, exclude_item=None):
     return references, stats, buckets
 
 
+def price_bucket(entries, now, exclude_item=None):
+    """Reference for one bucket's rows, optionally dropping one listing.
+
+    Rebuilding the whole corpus per candidate was O(candidates x corpus) and
+    pushed a scan run past 20 minutes on a 15-minute schedule, so every scan
+    was cancelled before it could alert.
+    """
+    cutoff = now - timedelta(days=MAX_AGE_DAYS)
+    prices, standing = [], 0
+    for row in entries:
+        if exclude_item and row.get("itemId") == exclude_item:
+            continue
+        created = _parse(row.get("itemCreationDate"))
+        if created and created < cutoff:
+            continue
+        if row.get("price") is None:
+            continue
+        prices.append(row["price"])
+        if row.get("source") == "backfill":
+            standing += 1
+    if len(prices) < MIN_COMPS or standing < MIN_STANDING_COMPS:
+        return None
+    prices.sort()
+    return {"reference": round(statistics.median(prices[:REFERENCE_LOWEST_N]), 2),
+            "comp_count": len(prices), "standing_comps": standing}
+
+
 def main():
     rows, aspects, gone = load_corpus()
     now = datetime.now(timezone.utc)
