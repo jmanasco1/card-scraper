@@ -9,6 +9,7 @@ A listing is flagged only when ALL hold:
 The $20 collection floor exists to build references and is deliberately NOT
 the alerting floor.
 """
+import collections
 import json
 import os
 import sys
@@ -16,7 +17,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from . import config, matching, reference
+from . import auth, config, matching, reference, verify
+from .client import EbayClient
 
 FLAGS = config.DATA_DIR / "flags.jsonl"
 
@@ -37,18 +39,36 @@ MAX_AGE_HOURS = int(os.environ.get("MAX_LISTING_AGE_HOURS", "0"))
 # best ones rather than going silent. Override with ALERT_DAILY_CAP.
 MAX_ALERTS_PER_DAY = int(os.environ.get("ALERT_DAILY_CAP", "200"))
 
+# Live verification costs two calls per candidate (one search, one getItem)
+# against a 5,000/day ceiling, so it is budgeted. Candidates past the budget are
+# recorded but never sent: an unverified alert is what the field reports were
+# complaining about.
+VERIFY_MAX_CANDIDATES = int(os.environ.get("VERIFY_MAX_CANDIDATES", "150"))
+
 
 def already_flagged():
+    """Item ids already alerted on, so the same listing is not sent twice.
+
+    Only a notified flag suppresses. A candidate dropped by live verification -
+    because a cheaper copy was listed, or comps were too thin - must stay
+    eligible: those conditions change when the cheaper copy sells, and
+    blacklisting the listing would lose the deal. A survivor whose notification
+    failed stays eligible too, so a channel outage delays an alert rather than
+    swallowing it.
+    """
     seen = set()
     if not FLAGS.exists():
         return seen
     with open(FLAGS) as fh:
         for line in fh:
-            if line.strip():
-                try:
-                    seen.add(json.loads(line)["itemId"])
-                except (ValueError, KeyError):
-                    pass
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get("notified") and row.get("itemId"):
+                seen.add(row["itemId"])
     return seen
 
 
@@ -136,6 +156,60 @@ def test_notify():
     return 0 if ok else 1
 
 
+def verify_candidates(candidates):
+    """Drop every candidate the live market does not back.
+
+    The corpus is a 45-day accumulation with no liveness guarantee, so a bucket
+    can show 27 comps when most have sold. Three field-reported failures came
+    straight from trusting it: alerts on listings that had already sold, on
+    cards whose only rival was priced higher, and on cards that were not the
+    cheapest live BIN. Each survivor here has been re-checked against what is
+    actually on sale right now.
+
+    A verification that errors drops the candidate rather than passing it. The
+    whole point is that unverified is not good enough to alert on.
+    """
+    if not candidates:
+        return []
+    cfg = config.load()
+    try:
+        cid, secret = config.credentials()
+        token, _ = auth.get_token(cid, secret)
+        client = EbayClient(token, cfg["marketplace_id"])
+        index = verify.slice_index(cfg)
+    except Exception as exc:                              # noqa: BLE001
+        print(f"::warning::live verification unavailable ({exc}); "
+              "no alerts will be sent this run")
+        for c in candidates:
+            c["verification"] = "unavailable"
+        return []
+
+    survivors, budget = [], VERIFY_MAX_CANDIDATES
+    for c in candidates:
+        if budget <= 0:
+            c["verification"] = "not verified: budget exhausted"
+            continue
+        budget -= 1
+        sl = verify.slice_for_bucket(index, c["bucket"])
+        try:
+            v = verify.check(client, cfg, sl, c["bucket"],
+                             c["itemId"], c["price"])
+        except Exception as exc:                          # noqa: BLE001
+            c["verification"] = f"error: {exc}"
+            continue
+        ok, why = verify.passes(v)
+        c["verification"] = why
+        if v:
+            c["live"] = {k: v[k] for k in
+                         ("live_total", "live_comps", "live_low",
+                          "live_prices", "still_listed", "is_lowest")}
+            if v.get("live_reference"):
+                c["live_reference"] = v["live_reference"]
+        if ok:
+            survivors.append(c)
+    return survivors
+
+
 def main():
     if "--test-notify" in sys.argv:
         return test_notify()
@@ -198,11 +272,16 @@ def main():
     # Rank by dollars saved, not discount percent. Under a 20/day cap a 30%
     # discount on a $12 card ($4) must not displace $180 off a $600 card.
     candidates.sort(key=lambda c: (-c["saving"], -c["discount_pct"]))
+
+    survivors = verify_candidates(candidates)
+    print(f"[scan] {len(survivors)}/{len(candidates)} candidates survived "
+          f"live verification")
+
     room = max(0, MAX_ALERTS_PER_DAY - sent_today)
-    to_send = candidates[:room]
-    over_limit = len(candidates) > room
+    to_send = survivors[:room]
+    over_limit = len(survivors) > room
     if over_limit:
-        print(f"::warning::{len(candidates)} candidates but only {room} left "
+        print(f"::warning::{len(survivors)} verified candidates but only {room} left "
               f"under the {MAX_ALERTS_PER_DAY}/day runaway guard "
               f"({sent_today} already sent). Sending the {len(to_send)} "
               f"largest by saving; the rest are still recorded in flags.jsonl.")
@@ -221,20 +300,30 @@ def main():
         else:
             flag["notified"] = False
 
-    if candidates:
+    # Only survivors are recorded. Dropped candidates re-qualify on every run
+    # until the market changes, so writing them would append the same rows every
+    # 15 minutes; their reasons go to the run log and the summary instead.
+    if survivors:
         config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         with open(FLAGS, "a") as fh:
-            for flag in candidates:
+            for flag in survivors:
                 fh.write(json.dumps(flag, sort_keys=True, ensure_ascii=False) + "\n")
 
+    # Reasons carry the offending price ("not lowest live BIN ($42.00
+    # exists)"), which would make every entry unique, so count the category.
+    reasons = collections.Counter(
+        c.get("verification", "unknown").split(" (")[0]
+        for c in candidates if c.get("verification") != "verified")
     lines = [f"buckets with reference: {len(references):,}",
              f"candidates flagged: {len(candidates)}",
+             f"survived live verification: {len(survivors)}",
              f"notifications sent: {sent}",
              f"alerts already sent today: {sent_today}",
              f"held back by the daily guard: "
-             f"{max(0, len(candidates) - len(to_send))}"]
+             f"{max(0, len(survivors) - len(to_send))}"]
+    lines += [f"dropped, {why}: {n}" for why, n in reasons.most_common(8)]
     print("\n".join("[scan] " + l for l in lines))
-    for flag in candidates[:10]:
+    for flag in survivors[:10]:
         print(f"[scan]   save ${flag['saving']:>7.2f}  -{flag['discount_pct']:.0f}%  "
               f"${flag['price']:.2f} vs ${flag['reference']:.2f} "
               f"(n={flag['comp_count']})  {(flag['title'] or '')[:46]}")
