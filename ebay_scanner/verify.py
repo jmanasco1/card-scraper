@@ -67,15 +67,20 @@ def live_params(cfg, sl, bucket_key):
     """Search parameters for the live listings of one bucket's card.
 
     Pins the slice's own aspect filter, so Set, Professional Grader and Grade
-    are constrained by eBay rather than by our title parse, and narrows to the
-    card number by keyword. Sorted by price so the cheapest arrives first.
+    are constrained by eBay rather than by our title parse, and pins the card
+    number as an aspect. Sorted by price so the cheapest arrives first.
     """
     params = query.search_params(cfg, 0)
     base = params.get("aspect_filter") or f"categoryId:{cfg['category_ids'][0]}"
-    params["aspect_filter"] = base + "," + sl["aspect_filter"]
+    parts = [base, sl["aspect_filter"]]
+    # Card Number must be pinned as an aspect, not passed as a keyword. As a
+    # keyword "6" matched any title containing a 6, so the LeBron #6 check came
+    # back with 99 unrelated cards priced $11-$20 and called a $15 listing
+    # overpriced.
     card_no = _card_number(bucket_key)
     if card_no and CARD_NO_IN_KEY.match(card_no):
-        params["q"] = card_no
+        parts.append("Card Number:{%s}" % card_no.upper())
+    params["aspect_filter"] = ",".join(parts)
     params["sort"] = "price"
     params["limit"] = 100
     params.pop("offset", None)
@@ -89,7 +94,7 @@ def _price(item):
         return None
 
 
-def check(client, cfg, sl, bucket_key, item_id, price):
+def check(client, cfg, sl, bucket_key, item_id, price, player=None):
     """Ask eBay what this card is selling for right now.
 
     Returns a verdict dict, or None when the query could not be built. The
@@ -97,7 +102,13 @@ def check(client, cfg, sl, bucket_key, item_id, price):
     """
     if not sl:
         return None
-    body = client.search(live_params(cfg, sl, bucket_key))
+    params = live_params(cfg, sl, bucket_key)
+    # Set plus card number still collides across products sharing a Set value:
+    # Victor Wembanyama #136 and a Rose Namajunas UFC #136 landed in one bucket.
+    # The player name separates them where the title yields one.
+    if player:
+        params["q"] = player
+    body = client.search(params)
     items = body.get("itemSummaries") or []
 
     comps, present = [], False
