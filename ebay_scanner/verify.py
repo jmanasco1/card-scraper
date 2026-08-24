@@ -5,29 +5,43 @@ re-check pass only sweeps a 7-day window of newly-collected listings, so the
 backfilled standing inventory that supplies nearly every comp is never
 revisited. A bucket can therefore show 27 comps when 26 of them have sold,
 which produces three failure modes reported from the field: alerts on cards
-with no live competition at all, alerts against references built from dead
-listings, and alerts on listings that are not actually the cheapest because a
-cheaper one was never collected.
+with no live competition, alerts against references built from dead listings,
+and alerts on listings that are not the cheapest because a cheaper one was
+never collected.
 
-Corpus buckets stay the shortlist — they cost no API calls. This module is the
-gate: it re-asks eBay what is on sale right now for that exact card, and the
-alert only survives if the live market agrees.
+Corpus buckets stay the shortlist - they cost no API calls. This module is the
+gate: it re-asks eBay what is on sale right now, and the alert survives only if
+the live market agrees.
+
+Two measurement rounds shaped what this trusts:
+
+Card number cannot be pinned as an aspect. Sending Card Number:{US1} did not
+error - eBay silently dropped it and returned the whole slice, taking one
+query from 70 results to 2,539 and another to the full 12,232. Filters this
+API ignores rather than rejects have burned us before, so the card number is
+sent as a keyword and then enforced again on the returned titles here, where
+no server-side behaviour can quietly disable it.
+
+Liveness cannot be inferred from a result page. Absence from the first 100
+results by price says nothing when the query matched thousands, and that read
+wrongly pronounced live listings dead. getItem answers it definitively: 404
+means gone.
 """
 
 import re
 
-from . import backfill, matching, query
+from . import backfill, config, matching, query
 
-# A live query returning fewer than this cannot establish a market price. This
-# is deliberately far below the corpus MIN_COMPS: the corpus accumulates 45
-# days of arrivals, while this counts only what is on sale at this instant.
+# A live query returning fewer than this cannot establish a market price. Far
+# below the corpus MIN_COMPS deliberately: the corpus accumulates 45 days of
+# arrivals, this counts only what is on sale at this instant.
 MIN_LIVE_COMPS = 4
 
-# The candidate must be the cheapest live listing to be worth an alert. A small
-# tolerance absorbs the case where an equal-priced twin sorts ahead of it.
+# The candidate must be the cheapest live listing to be worth an alert. The
+# tolerance absorbs an equal-priced twin sorting ahead of it.
 LOWEST_TOLERANCE = 0.01
 
-CARD_NO_IN_KEY = re.compile(r"^[a-z0-9-]+$")
+SAFE_CARD_NO = re.compile(r"^[A-Za-z0-9-]{1,8}$")
 
 
 def slice_index(cfg):
@@ -57,34 +71,28 @@ def slice_for_bucket(index, bucket_key):
     return index.get((parts[0], parts[1], parts[4], parts[5]))
 
 
-def _card_number(bucket_key):
+def card_number(bucket_key):
     """Bucket keys are year|set|card_number|parallel|grader|grade."""
     parts = bucket_key.split("|")
-    return parts[2] if len(parts) >= 3 else ""
+    if len(parts) < 3:
+        return None
+    value = parts[2].strip()
+    return value if value and SAFE_CARD_NO.match(value) else None
 
 
-def live_params(cfg, sl, bucket_key):
-    """Search parameters for the live listings of one bucket's card.
+def title_matcher(card_no):
+    """Regex deciding whether a title really is this card number.
 
-    Pins the slice's own aspect filter, so Set, Professional Grader and Grade
-    are constrained by eBay rather than by our title parse, and pins the card
-    number as an aspect. Sorted by price so the cheapest arrives first.
+    A bare short number matches far too much - '6' appears in most titles - so
+    a purely numeric card number must carry the '#'. Alphanumerics like US1 or
+    83T are distinctive enough to stand alone. Rejecting a legitimate comp only
+    shrinks the comp count and suppresses an alert, so the strict direction is
+    the safe one.
     """
-    params = query.search_params(cfg, 0)
-    base = params.get("aspect_filter") or f"categoryId:{cfg['category_ids'][0]}"
-    parts = [base, sl["aspect_filter"]]
-    # Card Number must be pinned as an aspect, not passed as a keyword. As a
-    # keyword "6" matched any title containing a 6, so the LeBron #6 check came
-    # back with 99 unrelated cards priced $11-$20 and called a $15 listing
-    # overpriced.
-    card_no = _card_number(bucket_key)
-    if card_no and CARD_NO_IN_KEY.match(card_no):
-        parts.append("Card Number:{%s}" % card_no.upper())
-    params["aspect_filter"] = ",".join(parts)
-    params["sort"] = "price"
-    params["limit"] = 100
-    params.pop("offset", None)
-    return params
+    escaped = re.escape(card_no)
+    if card_no.isdigit():
+        return re.compile(rf"#\s*{escaped}\b", re.I)
+    return re.compile(rf"#?\s*\b{escaped}\b", re.I)
 
 
 def _price(item):
@@ -92,6 +100,26 @@ def _price(item):
         return float(item["price"]["value"])
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def live_params(cfg, sl, card_no):
+    """Search parameters for the live listings of one bucket's card."""
+    params = query.search_params(cfg, 0)
+    base = params.get("aspect_filter") or f"categoryId:{cfg['category_ids'][0]}"
+    params["aspect_filter"] = base + "," + sl["aspect_filter"]
+    if card_no:
+        params["q"] = card_no
+    params["sort"] = "price"
+    params["limit"] = 100
+    params.pop("offset", None)
+    return params
+
+
+def is_live(client, item_id):
+    """True if the listing is still purchasable, False if eBay 404s it."""
+    resp = client.get(f"{config.API_HOST}/buy/browse/v1/item/{item_id}",
+                      allow_status=(404, 400))
+    return resp.status_code == 200
 
 
 def check(client, cfg, sl, bucket_key, item_id, price, player=None):
@@ -102,38 +130,42 @@ def check(client, cfg, sl, bucket_key, item_id, price, player=None):
     """
     if not sl:
         return None
-    params = live_params(cfg, sl, bucket_key)
+    card_no = card_number(bucket_key)
+    if not card_no:
+        return None
+
+    params = live_params(cfg, sl, card_no)
     # Set plus card number still collides across products sharing a Set value:
     # Victor Wembanyama #136 and a Rose Namajunas UFC #136 landed in one bucket.
-    # The player name separates them where the title yields one.
+    # A player name separates them where one is available.
     if player:
-        params["q"] = player
+        params["q"] = f"{card_no} {player}"
     body = client.search(params)
     items = body.get("itemSummaries") or []
 
-    comps, present = [], False
+    wants = title_matcher(card_no)
+    comps = []
     for it in items:
-        p = _price(it)
-        if p is None:
-            continue
         if it.get("itemId") == item_id:
-            present = True
             continue
-        comps.append(p)
+        if not wants.search(it.get("title") or ""):
+            continue
+        p = _price(it)
+        if p is not None:
+            comps.append(p)
     comps.sort()
 
     verdict = {
         "live_total": body.get("total"),
+        "live_returned": len(items),
         "live_comps": len(comps),
         "live_low": comps[0] if comps else None,
         "live_prices": comps[:10],
-        "still_listed": present,
+        "still_listed": is_live(client, item_id),
     }
     if len(comps) >= MIN_LIVE_COMPS:
-        verdict["live_reference"] = round(
-            sum(comps[:5]) / len(comps[:5]), 2)
-    verdict["is_lowest"] = bool(
-        comps and price <= comps[0] + LOWEST_TOLERANCE)
+        verdict["live_reference"] = round(sum(comps[:5]) / len(comps[:5]), 2)
+    verdict["is_lowest"] = bool(comps and price <= comps[0] + LOWEST_TOLERANCE)
     return verdict
 
 

@@ -55,8 +55,9 @@ def main():
         ok, why = verify.passes(v)
         kept += ok
         low = f"${v['live_low']:.2f}" if v["live_low"] is not None else "-"
-        print(f"  live:   total={v['live_total']} comps={v['live_comps']} "
-              f"low={low} still_listed={v['still_listed']}")
+        print(f"  live:   total={v['live_total']} returned={v['live_returned']} "
+              f"kept={v['live_comps']} low={low} "
+              f"still_listed={v['still_listed']}")
         print(f"  prices: {v['live_prices']}")
         print(f"  verdict: {'KEEP' if ok else 'DROP'} - {why}")
     print("=" * 92)
