@@ -6635,3 +6635,7 @@
 {"bucket": "2017|topps|us166|base|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 115.75, "reference": 108.99}
 {"bucket": "2016|bowman draft|bd-92|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 66.95, "reference": 60.05}
 {"bucket": "2024|bowman|17|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 53.49, "reference": 31.99}
+{"bucket": "2020|topps|78|gold|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 26.5, "reference": 25.0}
+{"bucket": "2023|panini prizm|pb-6|green|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 57.74, "reference": 57.74}
+{"bucket": "1991|topps|91c|silver|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 79.9, "reference": 79.79}
+{"bucket": "2024|panini donruss|309|red|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 82.5, "reference": 75.0}
