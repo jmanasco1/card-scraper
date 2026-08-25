@@ -6740,3 +6740,5 @@
 {"bucket": "2023|panini donruss optic|12|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 110.0, "reference": 100.0}
 {"bucket": "2023|bowman chrome|cpa-fc|base|PSA|10", "comp_count": 7, "day": "2026-08-25", "median": 214.6, "reference": 200.0}
 {"bucket": "2018|topps now|72|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 315.0, "reference": 315.0}
+{"bucket": "1988|topps|779|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 105.97, "reference": 99.95}
+{"bucket": "2023|panini contenders|5|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 91.84, "reference": 79.99}
