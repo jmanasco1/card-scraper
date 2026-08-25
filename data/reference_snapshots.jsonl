@@ -6732,3 +6732,6 @@
 {"bucket": "1986|fleer|41|base|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 85.0, "reference": 85.0}
 {"bucket": "2020|panini prizm|268|green prizm|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 20.95, "reference": 20.95}
 {"bucket": "2023|topps now|os21|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 84.99, "reference": 79.99}
+{"bucket": "2018|topps|us200|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 18.99, "reference": 18.0}
+{"bucket": "1986|fleer|34|base|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 99.99, "reference": 99.99}
+{"bucket": "2014|topps chrome|175|refractor|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 83.25, "reference": 80.0}
