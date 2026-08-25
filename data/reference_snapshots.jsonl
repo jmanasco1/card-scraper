@@ -6824,3 +6824,6 @@
 {"bucket": "2024|topps now|680|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 75.58, "reference": 70.4}
 {"bucket": "2023|panini illusions|24|base|PSA|10", "comp_count": 6, "day": "2026-08-25", "median": 31.29, "reference": 31.29}
 {"bucket": "2023|panini prizm|136|green prizm|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 450.0, "reference": 449.99}
+{"bucket": "2020|panini select|146|base|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 34.5, "reference": 25.0}
+{"bucket": "1989|fleer|368|base|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 35.48, "reference": 25.95}
+{"bucket": "2023|panini nba hoops|3|base|PSA|9", "comp_count": 6, "day": "2026-08-25", "median": 90.0, "reference": 30.0}
