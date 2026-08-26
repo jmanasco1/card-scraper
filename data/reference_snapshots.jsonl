@@ -9827,3 +9827,6 @@
 {"bucket": "1987|donruss|43|base|PSA|9", "comp_count": 6, "day": "2026-08-26", "median": 16.06, "reference": 15.2}
 {"bucket": "2019|panini revolution|101|base|PSA|9", "comp_count": 9, "day": "2026-08-26", "median": 42.8, "reference": 33.59}
 {"bucket": "2020|topps chrome|61|refractor|PSA|10", "comp_count": 6, "day": "2026-08-26", "median": 95.0, "reference": 90.0}
+{"bucket": "2019|panini chronicles|267|base|PSA|10", "comp_count": 6, "day": "2026-08-26", "median": 17.5, "reference": 17.5}
+{"bucket": "2019|bowman draft|bdc-60|refractor|PSA|9", "comp_count": 6, "day": "2026-08-26", "median": 31.3, "reference": 31.29}
+{"bucket": "2020|upper deck|209|base|PSA|9", "comp_count": 6, "day": "2026-08-26", "median": 31.29, "reference": 31.29}
