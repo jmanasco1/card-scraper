@@ -39385,3 +39385,5 @@
 {"bucket": "2015|bowman chrome|bcap-gt|base|BGS|9.5", "comp_count": 6, "day": "2026-09-04", "median": 115.54, "reference": 70.39}
 {"bucket": "1990|upper deck|17|base|BGS|9.5", "comp_count": 6, "day": "2026-09-04", "median": 43.94, "reference": 41.63}
 {"bucket": "1993|topps|200|base|PSA|10", "comp_count": 6, "day": "2026-09-04", "median": 97.49, "reference": 89.99}
+{"bucket": "2018|topps|litm-21|base|PSA|10", "comp_count": 6, "day": "2026-09-04", "median": 490.98, "reference": 482.95}
+{"bucket": "2018|topps heritage|275|base|PSA|9", "comp_count": 6, "day": "2026-09-04", "median": 41.39, "reference": 40.0}
