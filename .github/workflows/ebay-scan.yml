@@ -1,19 +1,16 @@
 name: eBay Graded Card Scan
 
 on:
-  schedule:
-    # Collection sweep. GitHub delays scheduled runs under load — see README;
-    # real cadence is looser than this and runs can be skipped entirely.
-    - cron: "*/15 * * * *"
-    # Listing re-check (disappearance / sold-proxy). Hourly, offset off the
-    # hour so it does not queue behind a collection run on the same minute.
-    - cron: "7 * * * *"
-    # Aspect enrichment. Hourly, offset again; budget-capped and it skips
-    # itself when the daily quota runs low, so collection always wins.
-    - cron: "37 * * * *"
-    # Slice backfill. 3,245 slices cannot be filled in a day, so this grinds
-    # through the grid every four hours, rotating and resuming where it left off.
-    - cron: "23 */4 * * *"
+  # Scheduled runs are disabled at the owner's request: the scanner was
+  # producing alerts that did not hold up when checked against eBay, and it
+  # should not keep spending API quota or sending notifications while that is
+  # unresolved. Nothing else is removed - restoring the four crons below brings
+  # collection, re-check, enrichment and backfill back exactly as they were.
+  #
+  #  - cron: "*/15 * * * *"   collection sweep + reference + scan + page
+  #  - cron: "7 * * * *"      listing re-check (disappearance / sold proxy)
+  #  - cron: "37 * * * *"     aspect enrichment (quota-capped)
+  #  - cron: "23 */4 * * *"   slice backfill
   workflow_dispatch:
     inputs:
       mode:
