@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from . import auth, config, matching, reference, verify
+from . import auth, config, matching, reference, sold_refs, verify
 from .client import EbayClient, browse_remaining
 
 FLAGS = config.DATA_DIR / "flags.jsonl"
@@ -122,7 +122,14 @@ def notify(flag):
     # eBay - which is the check that repeatedly caught the old headline out.
     nxt = flag.get("next_cheapest")
     edge = flag.get("edge")
-    if nxt is not None and edge is not None:
+    if flag.get("source") == "sold":
+        sales = ", ".join(f"${p:.0f}" for p, _ in (flag.get("sold_sales") or [])[:4])
+        line1 = f"*{flag['discount_pct']:.0f}% under recent sales*"
+        detail = (f"${price:.2f}  vs  sold median ${ref:.2f}  (save ${saving:.2f})\n"
+                  f"{flag['comp_count']} sales, last {sold_refs.MAX_AGE_DAYS}d: {sales}")
+        if nxt is not None and nxt > price:
+            detail += f"\nnext cheapest live: ${nxt:.2f}"
+    elif nxt is not None and edge is not None:
         line1 = f"*${edge:.2f} under the next cheapest*"
         detail = (f"${price:.2f}   next cheapest ${nxt:.2f}\n"
                   f"market ~${ref:.2f} across {flag['comp_count']} live "
@@ -240,13 +247,26 @@ def verify_candidates(candidates):
         except Exception as exc:                          # noqa: BLE001
             c["verification"] = f"error: {exc}"
             continue
-        ok, why = verify.passes(v)
+        if c.get("source") == "sold":
+            ok, why = sold_refs.passes_live(v)
+        else:
+            ok, why = verify.passes(v)
         c["verification"] = why
         if v:
             c["live"] = {k: v[k] for k in
                          ("live_total", "live_comps", "live_low",
                           "live_prices", "still_listed", "is_lowest")}
         if not ok:
+            continue
+
+        if c.get("source") == "sold":
+            # Sold comps are the market; keep them as the quoted reference and
+            # report the next cheapest live copy for context only.
+            nxt = v.get("live_low")
+            c["next_cheapest"] = nxt
+            gap = (nxt - c["price"]) if nxt and nxt > c["price"] else c["saving"]
+            c["edge"] = round(min(gap, c["saving"]), 2)
+            survivors.append(c)
             continue
 
         # The corpus reference is not fit to quote. Measured against the live
@@ -294,6 +314,9 @@ def main():
     now = datetime.now(timezone.utc)
     references, stats, buckets = reference.build(rows, aspects, gone, now)
     print(f"[scan] {len(references):,} buckets carry a valid reference")
+    sold_book = sold_refs.load()
+    print(f"[scan] {len(sold_book):,} buckets carry sold comps "
+          f"(require_sold={sold_refs.REQUIRE_SOLD})")
 
     seen = already_flagged()
     day = now.strftime("%Y-%m-%d")
@@ -313,19 +336,25 @@ def main():
         key, method, _ = matching.bucket_key(r, aspects.get(r.get("itemId")))
         if method not in TRUSTED_METHODS:
             continue
-        ref = references.get(key) if key else None
-        if not ref or ref["comp_count"] < reference.MIN_COMPS:
-            continue
-        # Cheap pre-filter on the shared reference, then re-price against the
-        # bucket with this listing removed so it cannot vote on its own value.
-        if price > DISCOUNT * ref["reference"]:
-            continue
-        peer = reference.price_bucket([e[0] for e in buckets.get(key, [])],
-                                      now, exclude_item=r["itemId"])
-        if not peer:
-            continue          # only itself held the bucket above the minimum
-        if price > DISCOUNT * peer["reference"]:
-            continue
+        peer = None
+        if sold_refs.REQUIRE_SOLD or key in sold_book:
+            ref = sold_refs.reference_for(r.get("title"), sold_book.get(key, []), now)
+            if not ref or price > sold_refs.SOLD_DISCOUNT * ref["reference"]:
+                continue
+        else:
+            ref = references.get(key) if key else None
+            if not ref or ref["comp_count"] < reference.MIN_COMPS:
+                continue
+            # Cheap pre-filter on the shared reference, then re-price against the
+            # bucket with this listing removed so it cannot vote on its own value.
+            if price > DISCOUNT * ref["reference"]:
+                continue
+            peer = reference.price_bucket([e[0] for e in buckets.get(key, [])],
+                                          now, exclude_item=r["itemId"])
+            if not peer:
+                continue          # only itself held the bucket above the minimum
+            if price > DISCOUNT * peer["reference"]:
+                continue
         # The slice pins Grade in the query, so eBay returns whatever the
         # seller typed into that aspect - and sellers get it wrong. Two alerts
         # went out for PSA 9 cards sitting in PSA 10 buckets, priced against
@@ -342,7 +371,8 @@ def main():
             continue
         if parsed["grader"] and parsed["grader"] != bucket_grader:
             continue
-        ref = dict(ref, reference=peer["reference"],
+        if peer:
+            ref = dict(ref, reference=peer["reference"],
                    comp_count=peer["comp_count"])
         candidates.append({
             "itemId": r["itemId"], "title": r.get("title"),
@@ -351,6 +381,7 @@ def main():
             "sellerUsername": r.get("sellerUsername"),
             "sellerFeedbackScore": r.get("sellerFeedbackScore"),
             "bucket": key, "match_method": method,
+            "source": ref.get("source", "asks"), "sold_sales": ref.get("sales"),
             "reference": ref["reference"], "comp_count": ref["comp_count"],
             "discount_pct": round((1 - price / ref["reference"]) * 100, 1),
             "distribution": {k: ref[k] for k in
