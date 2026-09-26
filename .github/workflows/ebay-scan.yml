@@ -1,16 +1,10 @@
 name: eBay Graded Card Scan
-
 on:
-  # Scheduled runs are disabled at the owner's request: the scanner was
-  # producing alerts that did not hold up when checked against eBay, and it
-  # should not keep spending API quota or sending notifications while that is
-  # unresolved. Nothing else is removed - restoring the four crons below brings
-  # collection, re-check, enrichment and backfill back exactly as they were.
-  #
-  #  - cron: "*/15 * * * *"   collection sweep + reference + scan + page
-  #  - cron: "7 * * * *"      listing re-check (disappearance / sold proxy)
-  #  - cron: "37 * * * *"     aspect enrichment (quota-capped)
-  #  - cron: "23 */4 * * *"   slice backfill
+  schedule:
+    - cron: "*/15 * * * *"   # collection sweep + reference + scan + page
+    - cron: "7 * * * *"      # listing re-check
+    - cron: "37 * * * *"     # aspect enrichment
+    - cron: "23 */4 * * *"   # slice backfill
   workflow_dispatch:
     inputs:
       mode:
